@@ -116,11 +116,12 @@ struct ArtSet {
     const char* (*acts)[4];        // corner-mascot acts, by usage-rate group
     WalkKind walk;                 // gait-step schedule for this set's walk cycle
     const char* peek;              // pose shown large at the far edge mid-trip
+    uint8_t peek_hang_pct;         // how much of it hangs off the edge (see below)
 };
 
 static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
-    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking" },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  "waving" },
+    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking", 0 },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  "waving", 45 },
 };
 
 // Art follows the theme: one mode switch changes palette and mascot together.
@@ -573,10 +574,22 @@ static int mas_peek_cell(const splash_anim_def_t *a) {
     return cell < 1 ? 1 : cell;
 }
 
+// Clawd's "lurking" is drawn already cropped -- a head and shoulder leaning in
+// from off-stage -- so placing it flush to the edge reads as a peek. A
+// borrowed full-body pose placed the same way just looks like the character
+// teleported there. peek_hang_pct pushes such a pose partly off the edge so
+// the screen border does the cropping the art does not.
+static int mas_peek_x(const splash_anim_def_t *a, int cell) {
+    const int w = a->w * cell;
+    return mas_screen_w - w + (w * art().peek_hang_pct) / 100;
+}
+
+// The peek sits low, but not so low that arriving there reads as a jump down
+// the whole panel. A cropped pose can sit deeper because less of it shows.
 static int mas_peek_feet_y(void) {
     const BoardCaps& c = board_caps();
     const int mind = (c.width < c.height) ? c.width : c.height;
-    return mind * 4 / 5;          // where Clawd's stage-derived feet already sit
+    return art().peek_hang_pct ? mind * 2 / 3 : mind * 4 / 5;
 }
 
 static int mas_fit_cell(void) {
@@ -724,7 +737,7 @@ void splash_mascot_tick(void) {
                 mas_frame = 0;                  // replay until the dwell is up
                 mas_render(a, 0, true, &mas_lurk_dsc, mas_lurk_buf,
                            mas_lurk_img, mas_lurk_cell,
-                           mas_screen_w - a->w * mas_lurk_cell,
+                           mas_peek_x(a, mas_lurk_cell),
                            mas_peek_feet_y());
                 return;
             }
@@ -782,7 +795,7 @@ void splash_mascot_tick(void) {
                 mas_lurk_cell = mas_peek_cell(lurk);
                 mas_render(lurk, 0, true, &mas_lurk_dsc, mas_lurk_buf,
                            mas_lurk_img, mas_lurk_cell,
-                           mas_screen_w - lurk->w * mas_lurk_cell,
+                           mas_peek_x(lurk, mas_lurk_cell),
                            mas_peek_feet_y());
             } else {
                 mas_mode = MAS_WALK_IN;             // no lurk asset: turn back

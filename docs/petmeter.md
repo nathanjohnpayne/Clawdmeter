@@ -310,14 +310,29 @@ Anything typographic — em dash, bullet, `●` — renders as tofu. Check the c
 before reaching for a character. The "no quota" placeholder is a plain ASCII
 hyphen and the steady status dot is U+00B7 for exactly this reason.
 
+### Tabular figures
+
+`tools/tabular_digits.py` equalizes digit advance widths in the generated
+font tables, so changing numbers stop jittering. Styrene 48 had `1` at 342
+units against `0` at 531 — a 55% difference, which moved the percent sign and
+everything after it by ~23px as usage ticked.
+
+Regenerating with OpenType `tnum` does **not** solve this: `lv_font_conv`
+converts glyphs by codepoint and does not apply OpenType features, and
+tabular figures are a feature rather than separate codepoints. The tool widens
+every digit to the widest and shifts its bitmap right by half the difference,
+so shapes are untouched and only the spacing changes. It is idempotent.
+
+Re-run it after regenerating any font that renders a changing number.
+
 ---
 
 ## 9. Not done
 
-- **Fonts.** Two reasons to regenerate: OpenAI Sans (or an OFL stand-in like
-  Inter) for Codex mode, and **tabular figures** — Styrene's digits are
-  proportional, `1` is 342 units against `0` at 531, so a percentage visibly
-  jitters as it changes.
+- **Typeface identity.** Codex mode renders in Styrene B, which is
+  Anthropic's own sans. OpenAI Sans is proprietary and undistributed; an OFL
+  stand-in such as Inter would need `lv_font_conv` plus the LVGL 9 patching in
+  [`docs/fonts.md`](fonts.md).
 - **Licensing.** Upstream is deliberately unlicensed because it bundles
   proprietary fonts and mascot art; this fork adds a second vendor to that
   rather than resolving it. See the root README's warning.
