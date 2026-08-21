@@ -173,19 +173,34 @@ Codey uses `WALK_EVEN`: one cell per gait frame.
 
 ### The trip
 
-Both mascots now run the same journey: walk off stage left, appear large at
-the bottom right, walk the whole width back to the corner slot. The return
-leg is what crosses the screen.
+Walk off stage left, then back in from the right and across the whole width to
+the corner slot. The return leg is what crosses the screen.
 
-The peek matches **on-screen height**, not cell size. Clawd's `lurking` is a
-cropped lean-in pose (13×17 cells → 104×136px); Codey's borrowed `waving` is
-a full 24×30 figure, so at the same cell it rendered 192×240 — half the panel.
-Both anchor their feet to the same 4/5-screen line rather than deriving it
-from their own stage offsets.
+Clawd additionally appears large at the far edge partway through — his
+`lurking` is a pose **drawn already cropped**, a head and shoulder leaning in
+from off-stage, so placing it flush to the screen edge reads as peeking round
+a corner.
 
-A short peek loops until `PEEK_MIN_MS`. Clawd's is 24 authored frames and
-dwells naturally; Codey's waving is 4 frames totalling 600ms, which flashes a
-large sprite on and off before it reads as anything.
+**Codey has no such pose, and faking one does not work.** A borrowed full-body
+pose placed the same way reads as the character teleporting: it is a whole
+figure standing somewhere it did not walk to. Three attempts — matching the
+on-screen height, cropping 45% off the edge, raising it up the panel — each
+reduced the problem without fixing it, because the problem is that the
+character is *whole*. A set with no drawn peek pose sets `peek = nullptr` and
+simply crosses.
+
+If you want the peek for another mascot, draw or crop the pose for it. Do not
+borrow a standing one.
+
+### Act selection
+
+Random, not round-robin, never repeating the previous act — with only three or
+four acts per band a fixed order is visible within a minute.
+
+The picker is a small xorshift rather than `rand()`, because the Arduino and
+native builds disagree about seeding. It reads the **high** bits: xorshift32's
+low bits are much weaker, and a modulo by a small power of two takes exactly
+those, which cycled between two acts.
 
 ### Buffers
 

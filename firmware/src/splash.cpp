@@ -97,10 +97,14 @@ static const char* CLAWD_ACTS[4][4] = {
 // sheet does not have. Every act below fits the 80px slot at its own cell
 // size -- the tallest, jumping and happy, come to 68px.
 static const char* CODEY_ACTS[4][4] = {
-    { "thinking", "trip",    "idle",     "happy"   },   // idle: contemplative
-    { "waving",   "laptop",  "trip",     "thinking"},   // normal
-    { "laptop",   "waving",  "trip",     "happy"   },   // active: heads-down
-    { "jumping",  "running", "dizzy",    "laptop"  },   // heavy: frazzled
+    // Every band draws on most of the sheet, because the pick is random and a
+    // band you sit at for hours is otherwise a band that shows three poses.
+    // "idle" is not listed: it is the still pose the mascot returns to anyway,
+    // so as an act it reads as nothing happening.
+    { "thinking", "laptop",  "happy",  "trip"   },   // idle: contemplative
+    { "waving",   "laptop",  "trip",   "thinking" }, // normal
+    { "laptop",   "running", "happy",  "waving" },   // active: heads-down
+    { "jumping",  "running", "dizzy",  "laptop" },   // heavy: frazzled
 };
 
 enum WalkKind { WALK_NONE, WALK_CRAB, WALK_FRONT, WALK_EVEN };
@@ -121,7 +125,7 @@ struct ArtSet {
 
 static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
     { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking", 0 },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  "waving", 45 },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  nullptr, 0 },
 };
 
 // Art follows the theme: one mode switch changes palette and mascot together.
@@ -503,6 +507,26 @@ static uint32_t mas_mode_started = 0;
 static int  mas_x = 0;                 // widget x, px (may be off-screen)
 static int  mas_face = +1;
 static uint8_t mas_act_idx = 0;
+static int8_t  mas_last_act = -1;
+
+// Small xorshift rather than rand(): the Arduino and native builds disagree
+// about what rand() is seeded with, and this only needs to look unplanned.
+static uint32_t mas_rng_state = 0;
+static uint8_t mas_pick_act(uint8_t count) {
+    if (count <= 1) return 0;
+    if (!mas_rng_state) mas_rng_state = millis() | 1u;
+    mas_rng_state ^= mas_rng_state << 13;
+    mas_rng_state ^= mas_rng_state >> 17;
+    mas_rng_state ^= mas_rng_state << 5;
+    // High bits: xorshift32's low bits are much weaker, and a modulo by a
+    // small power of two takes exactly those -- picking on `state % 4` cycled
+    // between two acts.
+    uint8_t pick = (uint8_t)((mas_rng_state >> 16) % count);
+    // A repeat reads as the animation being stuck, so step off it.
+    if ((int8_t)pick == mas_last_act) pick = (pick + 1) % count;
+    mas_last_act = (int8_t)pick;
+    return pick;
+}
 static uint32_t mas_peek_started = 0;
 static bool mas_from_loop = false;
 
@@ -699,7 +723,8 @@ void splash_mascot_tick(void) {
         uint8_t count = 0;
         while (count < 4 && art().acts[g][count]) count++;
         if (count == 0) { mas_mode_started = now; return; }
-        const char *act = art().acts[g][mas_act_idx++ % count];
+        const char *act = art().acts[g][mas_pick_act(count)];
+        Serial.printf("mascot: %s\n", act);
         mas_frame = 0;
         mas_frame_started = now;
         mas_from_loop = false;
