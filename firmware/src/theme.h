@@ -111,5 +111,14 @@ theme_mode_t theme_next_mode(void);   // cycles, wrapping at THEME_MODE_COUNT
 // Auto-flip: cycle the provider on a timer instead of only on a button press.
 // Persisted next to the mode, since both answer "what is the screen showing"
 // and both should survive a reboot.
-bool theme_autoflip(void);
-void theme_set_autoflip(bool on);
+//
+// Index 0 is off, so a fresh device does nothing until asked, and one press
+// past the slowest cadence returns to off.
+#define AUTOFLIP_COUNT 5
+static const uint32_t AUTOFLIP_MS[AUTOFLIP_COUNT] = { 0, 30000, 60000, 120000, 180000 };
+static const char* const AUTOFLIP_LABEL[AUTOFLIP_COUNT] = { "Auto off", "Auto 30s", "Auto 1m", "Auto 2m", "Auto 3m" };
+
+uint8_t  theme_autoflip_idx(void);   // 0 = off
+uint32_t theme_autoflip_ms(void);    // 0 = off
+const char* theme_autoflip_label(void);
+void theme_cycle_autoflip(void);     // advances, wrapping through off

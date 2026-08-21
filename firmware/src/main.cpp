@@ -171,12 +171,28 @@ static bool parse_json(const char* json) {
 // now". Long enough not to trip on a firm tap, short enough not to feel stuck.
 #define MODE_HOLD_MS 600
 
-// Auto-flip cadence. Slow enough to read a screen before it changes, fast
-// enough that both providers stay current at a glance.
-#define AUTOFLIP_INTERVAL_MS 120000
+// Contact bounce settle time. Short enough to feel instant, long enough that a
+// noisy edge cannot register as a press.
+#define SECONDARY_DEBOUNCE_MS 30
+
 static uint32_t autoflip_last_ms = 0;
 
+// Two flips in quick succession leave the screen where it started, so they
+// read as a glitch rather than an action. Observed intermittently on hardware
+// at the same millisecond, with the timer measurably correct (60002ms elapsed,
+// last-fired updated) -- so the second call comes from somewhere else, most
+// likely a dirty edge on SECONDARY that outlasts the debounce. Rather than
+// guess further, make a repeat impossible at the one place every flip goes
+// through. 250ms is past any contact bounce and short of a deliberate
+// double-tap.
+#define MIN_FLIP_GAP_MS 250
+
 static void cycle_provider(void) {
+    static uint32_t last_flip_ms = 0;
+    const uint32_t now = millis();
+    if (last_flip_ms && now - last_flip_ms < MIN_FLIP_GAP_MS) return;
+    last_flip_ms = now;
+
     theme_set_mode(theme_next_mode());
     splash_reload_art();
     ui_apply_theme();
@@ -245,11 +261,10 @@ static void check_serial_cmd() {
             else if (strcmp(cmd_buf, "splash") == 0) ui_show_screen(SCREEN_SPLASH);
             else if (strcmp(cmd_buf, "mode") == 0) cycle_provider();
             else if (strcmp(cmd_buf, "auto") == 0) {
-                const bool on = !theme_autoflip();
-                theme_set_autoflip(on);
+                theme_cycle_autoflip();
                 autoflip_last_ms = millis();
-                ui_flash_hint(on ? "Auto 2m" : "Auto off", 2000);
-                Serial.printf("autoflip: %s\n", on ? "on" : "off");
+                ui_flash_hint(theme_autoflip_label(), 1600);
+                Serial.printf("autoflip: %s\n", theme_autoflip_label());
             }
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
@@ -417,21 +432,30 @@ void loop() {
             static bool     secondary_wake_swallowed = false;
             static uint32_t secondary_down_ms = 0;
             static bool     secondary_consumed = false;
-            bool secondary_now = input_hal_is_held(INPUT_BTN_SECONDARY);
+            static bool     secondary_raw_was = false;
+            static uint32_t secondary_edge_ms = 0;
+            static bool     secondary_now = false;
+            const bool raw = input_hal_is_held(INPUT_BTN_SECONDARY);
+            if (raw != secondary_raw_was) {
+                secondary_raw_was = raw;
+                secondary_edge_ms = millis();
+            } else if (raw != secondary_now &&
+                       millis() - secondary_edge_ms >= SECONDARY_DEBOUNCE_MS) {
+                secondary_now = raw;
+            }
 
             if (secondary_now && !secondary_was) {
                 secondary_down_ms = millis();
                 secondary_consumed = false;
                 if (idle_consume_wake_press()) secondary_wake_swallowed = true;
-            } else if (secondary_now && !secondary_consumed &&
-                       !secondary_wake_swallowed &&
+            } else if (secondary_now && !secondary_wake_swallowed &&
                        millis() - secondary_down_ms >= MODE_HOLD_MS) {
-                const bool on = !theme_autoflip();
-                theme_set_autoflip(on);
+                theme_cycle_autoflip();
                 autoflip_last_ms = millis();
-                ui_flash_hint(on ? "Auto 2m" : "Auto off", 2000);
+                ui_flash_hint(theme_autoflip_label(), 1600);
                 secondary_consumed = true;
-                Serial.printf("autoflip: %s\n", on ? "on" : "off");
+                Serial.printf("autoflip: %s\n", theme_autoflip_label());
+                secondary_down_ms = millis();   // next step after another hold
             } else if (!secondary_now && secondary_was) {
                 if (secondary_wake_swallowed)   secondary_wake_swallowed = false;
                 else if (!secondary_consumed)   cycle_provider();
@@ -442,8 +466,8 @@ void loop() {
         // Auto-flip. Runs regardless of button count: a one-button board can
         // still be put into auto-flip over serial, and this is its only way to
         // reach the second provider at all.
-        if (theme_autoflip() &&
-            millis() - autoflip_last_ms >= AUTOFLIP_INTERVAL_MS) {
+        const uint32_t flip_ms = theme_autoflip_ms();
+        if (flip_ms && millis() - autoflip_last_ms >= flip_ms) {
             cycle_provider();
         }
 

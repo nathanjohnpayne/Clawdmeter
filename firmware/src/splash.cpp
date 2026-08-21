@@ -75,13 +75,13 @@ static const char* CLAWD_GROUPS[GROUP_COUNT][GROUP_MAX] = {
 // resolve_group_lists(), so a partial match degrades rather than breaking.
 static const char* CODEY_GROUPS[GROUP_COUNT][GROUP_MAX] = {
     // Group 0 — idle / low
-    { "idle", "happy", "waving", nullptr },
+    { "idle", "happy", "waving", "thinking" },
     // Group 1 — normal pace
-    { "walking", "thinking", "idle", nullptr },
+    { "walking", "laptop", "thinking", "waving" },
     // Group 2 — active (typing along with you)
-    { "laptop", "running", "jumping", nullptr },
+    { "laptop", "running", "jumping", "happy" },
     // Group 3 — heavy burn
-    { "running", "dizzy", "jumping", nullptr },
+    { "running", "dizzy", "jumping", "laptop" },
 };
 
 static const char* CLAWD_ACTS[4][4] = {
@@ -97,10 +97,10 @@ static const char* CLAWD_ACTS[4][4] = {
 // sheet does not have. Every act below fits the 80px slot at its own cell
 // size -- the tallest, jumping and happy, come to 68px.
 static const char* CODEY_ACTS[4][4] = {
-    { "thinking", "trip",     "idle",    NULL     },   // idle: contemplative
-    { "waving",   "trip",     "happy",   "thinking" }, // normal
-    { "laptop",   "waving",   "trip",    "happy"  },   // active: heads-down
-    { "jumping",  "running",  "dizzy",   "laptop" },   // heavy: frazzled
+    { "thinking", "trip",    "idle",     "happy"   },   // idle: contemplative
+    { "waving",   "laptop",  "trip",     "thinking"},   // normal
+    { "laptop",   "waving",  "trip",     "happy"   },   // active: heads-down
+    { "jumping",  "running", "dizzy",    "laptop"  },   // heavy: frazzled
 };
 
 enum WalkKind { WALK_NONE, WALK_CRAB, WALK_FRONT, WALK_EVEN };
@@ -120,7 +120,7 @@ struct ArtSet {
 
 static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
     { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking" },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  "waving" },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  nullptr },
 };
 
 // Art follows the theme: one mode switch changes palette and mascot together.
@@ -609,7 +609,7 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y,
     for (int m = 0; m < THEME_MODE_COUNT; m++) {
         const ArtSet &set = ART_SETS[m];
         for (int i = 0; i < set.count; i++) {
-            if (strcmp(set.anims[i].name, set.peek) != 0) continue;
+            if (!set.peek || strcmp(set.anims[i].name, set.peek) != 0) continue;
             if (set.anims[i].w > peek_w) peek_w = set.anims[i].w;
             if (set.anims[i].h > peek_h) peek_h = set.anims[i].h;
         }
@@ -718,14 +718,15 @@ void splash_mascot_tick(void) {
         mas_x += dir * step;
         if (mas_mode == MAS_WALK_OFF && mas_x <= -a->w * mas_cell) {
             // Fully off: hide the corner sprite, run the full-size lurk.
-            const splash_anim_def_t *lurk = anim_by_name(art().peek);
+            const splash_anim_def_t *lurk = art().peek ? anim_by_name(art().peek) : nullptr;
             if (!lurk || !mas_lurk_img || !mas_lurk_buf) {
-                // No peek pose at all: turn round off-screen and walk back
-                // in from the same side, rather than vanishing.
+                // No peek pose: cross anyway. Re-enter from the RIGHT, like
+                // the post-peek leg does, so the walk still spans the screen
+                // instead of doubling back on itself at the left edge.
                 mas_frame = 0;
                 mas_from_loop = false;
-                mas_face = +1;
-                mas_x = -a->w * mas_cell;
+                mas_face = -1;
+                mas_x = mas_screen_w;
                 mas_mode = MAS_WALK_IN;
                 return;
             }
