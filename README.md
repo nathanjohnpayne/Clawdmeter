@@ -1,12 +1,34 @@
-# Clawdmeter
+# Petmeter
 
 <img src="assets/readme/waving.gif" width="120" align="right" alt="">
 
-A small ESP32 dashboard I made for my desk to keep an eye on Claude Code usage.
+> **A fork of [HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter).**
+> Nearly all of this is Hermann's work — the firmware, the HAL, the splash
+> engine, the daemon. This fork adds multi-provider support: usage for more
+> than one coding-agent plan on the same device, switched with a button.
+> Upstream's licensing note below applies here unchanged, and this fork adds a
+> second vendor's assets to it — see [`research/codex-pets/`](research/codex-pets/CLAUDE.md).
 
-It runs on a [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-s3-touch-amoled-2.16.htm?&aff_id=149786) as well as a few other alternative boards and pairs over Bluetooth, the splash screen plays pixel-art Clawd animations that get
+A small ESP32 dashboard for your desk that keeps an eye on coding-agent usage.
+
+It runs on a [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-s3-touch-amoled-2.16.htm?&aff_id=149786) as well as a few other alternative boards and pairs over Bluetooth, the splash screen plays pixel-art animations that get
 busier when your usage rate climbs. The two side buttons send Space and
 Shift+Tab over BLE HID for Claude Code's voice mode and mode-toggle shortcuts.
+
+## Providers
+
+Hold the right button to switch which plan the screen is showing. The host
+daemon polls every provider it can read and sends them in one payload, so the
+switch is instant rather than waiting for the next poll.
+
+| Provider | Source | Screen |
+|----------|--------|--------|
+| **Claude** | Claude Code's OAuth token → `anthropic-ratelimit-unified-*` response headers | Warm palette, serif title, Clawd. The Weekly card flips between all-models and any scoped-model allowance (e.g. Fable). |
+| **Codex** | Codex CLI's OAuth token → `chatgpt.com/backend-api/wham/usage`, with the session rollout logs as an offline fallback | Neutral palette, sans throughout, Codey. Shows the model's weekly quota above the account's. |
+
+Adding a provider means writing one collector against the interface in
+[`daemon/collectors/`](daemon/collectors/__init__.py) — a normalized
+`UsageSnapshot` the daemon consumes without knowing which vendor produced it.
 
 ![Usage meter](assets/demo.jpeg)
 
