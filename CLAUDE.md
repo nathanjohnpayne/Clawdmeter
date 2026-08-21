@@ -230,6 +230,14 @@ methodology, including the Lottie sources and the assets-proxy).
 
 See `~/.claude/projects/.../memory/` files for persistent context (user is an embedded-beginner senior dev, brand-conscious, prefers iterative UI refinement, dislikes me authoring my own art when third-party assets are intended). Always read those memory files at session start.
 
+## Petmeter fork additions
+
+This tree is a fork that adds multi-provider support — Claude and Codex on one
+device, switched with the right button. **[`docs/petmeter.md`](docs/petmeter.md)
+is the reference**: collector interface, wire format, themes, art sets, the pet
+sprite pipeline, controls, and the non-obvious traps (palette index 0, ASCII-only
+font subsets, per-character gait tables, buffers sized across art sets).
+
 ## Recent session highlights
 
 - **AMOLED-1.8 chime verified on hardware + EXIO2 touch-kill fix (2026-07-13).** The 1.8's `amp_enable` hook drove both GPIO 46 and XCA9554 EXIO2 ("the unused one is harmless") — but pulling EXIO2 low takes the FT3168 off the I2C bus (chip stops ACKing; IDF reports it as `ESP_ERR_INVALID_STATE`, which reads like a driver wedge and cost a long I2S red-herring chase). Amp enable is GPIO 46 only; EXIO2 must stay HIGH. Chime, touch, buttons, and BLE bond persistence all verified on a real 1.8.

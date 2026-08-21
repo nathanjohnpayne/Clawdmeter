@@ -30,6 +30,11 @@ Adding a provider means writing one collector against the interface in
 [`daemon/collectors/`](daemon/collectors/__init__.py) — a normalized
 `UsageSnapshot` the daemon consumes without knowing which vendor produced it.
 
+**[`docs/petmeter.md`](docs/petmeter.md)** documents everything this fork
+adds: the collector interface, the wire format, the theme and art-set systems,
+the pet sprite pipeline, the button and serial controls, and the traps found
+building it.
+
 ![Usage meter](assets/demo.jpeg)
 
 ## Screens
