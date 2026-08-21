@@ -28,6 +28,13 @@ struct Theme {
     uint32_t amber;
     uint32_t red;
     uint32_t bar_bg;    // unfilled bar track
+
+    // Bar color for a scoped-model face on the flipping Weekly card. Not a
+    // brand color -- it marks "this face is one model's slice, not the whole
+    // plan" -- so both themes use the same blue, which is the one Claude's own
+    // usage settings use for the Fable allowance.
+    uint32_t scoped;
+
     const char* name;   // shown on the usage screen
 
     // Claude's identity is a serif display face over sans body copy; ChatGPT's
@@ -64,6 +71,7 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
         .amber  = 0xd97757,
         .red    = 0xc0392b,
         .bar_bg = 0x2a2a28,
+        .scoped = 0x4a7dea,
         .name   = "Claude",
         .sans_only = false,
         .progress = 0x788c5d,        // healthy = green, as it always has been
@@ -80,6 +88,7 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
         .amber  = 0xe8a33d,
         .red    = 0xef4146,
         .bar_bg = 0x2a2a2a,
+        .scoped = 0x4a7dea,
         .name   = "Codex",
         .sans_only = true,
         .progress = 0xe7e7e7,        // neutral until actionable

@@ -227,6 +227,10 @@ JSON payload format (written to RX):
 
 Fields: `s` = session %, `sr` = session reset (minutes), `w` = weekly %, `wr` = weekly reset (minutes), `st` = status, `ok` = success flag.
 
+Optional fields (omitted when not applicable; the firmware treats absence as "feature off"): `ws` = weekly scoped-model limits for plans that meter specific models separately, as `[{"n":"Fable","p":75}, ...]` — one entry per scoped model, labeled with the API's own display name. They share the weekly reset, so no separate reset field is sent. When `ws` is present, `w` is re-based on the same OAuth-usage source as the scoped percentages rather than the rate-limit header, so both weekly numbers carry identical rounding (the header is a 2-decimal fraction, the endpoint a rounded integer — mixing them can render a real 12.6/12.4 pair as 12/12).
+
+`x` = a second provider's usage, same field names nested one level down, for devices showing more than one plan. Claude stays at the top level so an older firmware ignores the key entirely. Within it, `has_s` / `has_w` mark which panels carry a real quota — a Codex Pro account meters one weekly window and no 5-hour one, and a slot with nothing behind it renders blank rather than a convincing 0%. `sm` / `wm` override the panel pills, so a panel showing one model's slice can say which (`"Spark"`, `"Overall"`) instead of `Current` / `Weekly`.
+
 ## Development
 
 <img src="assets/readme/crab.gif" width="120" align="right" alt="">
