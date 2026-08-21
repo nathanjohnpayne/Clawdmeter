@@ -1,5 +1,7 @@
 #include "splash.h"
 #include "splash_animations.h"
+#include "pet_animations.h"
+#include "theme.h"
 #include "splash_geometry.h"
 #include "theme.h"
 #include "usage_rate.h"
@@ -55,7 +57,7 @@ static int8_t  group_lists[GROUP_COUNT][GROUP_MAX];
 static uint8_t group_size[GROUP_COUNT] = {0};
 static uint8_t group_rotation[GROUP_COUNT] = {0};
 
-static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
+static const char* CLAWD_GROUPS[GROUP_COUNT][GROUP_MAX] = {
     // Group 0 — idle / sleepy (calm, investigative). Magnifier first: it's
     // the boot pick, and lurking-first would boot to a near-empty screen.
     { "magnifier", "walking", "pointing", "lurking" },
@@ -67,6 +69,39 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     { "racing car", "cloud", "sailing scene", "jumping happy" },
 };
 
+// Codey's sheet has no walkers-with-props, so the groups lean on what it does
+// have: calm poses at low burn through to the laptop and the dizzy faces at
+// high burn. Names that a set lacks are simply skipped by
+// resolve_group_lists(), so a partial match degrades rather than breaking.
+static const char* CODEY_GROUPS[GROUP_COUNT][GROUP_MAX] = {
+    // Group 0 — idle / low
+    { "idle", "happy", "waving", nullptr },
+    // Group 1 — normal pace
+    { "walking", "thinking", "idle", nullptr },
+    // Group 2 — active (typing along with you)
+    { "laptop", "running", "jumping", nullptr },
+    // Group 3 — heavy burn
+    { "running", "dizzy", "jumping", nullptr },
+};
+
+// The two art sets. Each was authored on its own stage, so the stage size
+// travels with the art rather than being a constant of the engine: Clawd's
+// crops are placed on a 55x37 stage, Codey's on 35x40.
+struct ArtSet {
+    const splash_anim_def_t *anims;
+    uint8_t count;
+    uint8_t stage_w, stage_h;
+    const char* (*groups)[GROUP_MAX];
+};
+
+static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
+    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS },
+};
+
+// Art follows the theme: one mode switch changes palette and mascot together.
+static inline const ArtSet& art(void) { return ART_SETS[theme_mode()]; }
+
 // Scratch stage: the current animation frame composed centered onto the full
 // 60×60 grid (index 0 = background elsewhere). 3.6 KB of static RAM.
 static uint8_t stage_cells[GRID * GRID];
@@ -76,8 +111,8 @@ static uint8_t stage_cells[GRID * GRID];
 // centered per-animation. All animations share one idle-Clawd position
 // (x 15..38, y 21..36 in stage cells), so transitions between them are
 // seamless; centering per-crop would make the still pose jump around.
-#define STAGE_ANCHOR_X ((GRID - 55) / 2)
-#define STAGE_ANCHOR_Y ((GRID - 37) / 2)
+#define STAGE_ANCHOR_X ((GRID - art().stage_w) / 2)
+#define STAGE_ANCHOR_Y ((GRID - art().stage_h) / 2)
 
 // ─── Playback: intro → loop → outro ─────────────────────────────────────────
 // Every animation carries a loop region (converter-detected gait cycles and
@@ -206,7 +241,7 @@ static const uint8_t* compose_stage(const splash_anim_def_t *a, uint16_t frame) 
     // vertical placement should stay anchored (rounded panel corners).
     int ax = STAGE_ANCHOR_X + a->ox;
     if (a->ox == 0)           ax = 0;
-    if (a->ox + a->w == 55)   ax = GRID - a->w;
+    if (a->ox + a->w == art().stage_w) ax = GRID - a->w;
     if (walk_active)          ax = walk_x;
     const bool mirror = walk_active && walk_face < 0;
     const int ay = STAGE_ANCHOR_Y + a->oy;
@@ -233,10 +268,10 @@ static void resolve_group_lists(void) {
         group_size[g] = 0;
         for (int s = 0; s < GROUP_MAX; s++) {
             group_lists[g][s] = -1;
-            const char* want = GROUP_NAMES[g][s];
+            const char* want = art().groups[g][s];
             if (!want) continue;
-            for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
-                if (strcmp(splash_anims[i].name, want) == 0) {
+            for (int i = 0; i < art().count; i++) {
+                if (strcmp(art().anims[i].name, want) == 0) {
                     group_lists[g][group_size[g]++] = (int8_t)i;
                     break;
                 }
@@ -375,8 +410,8 @@ static void mini_render(void) {
 
 lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px) {
     mini_anim = NULL;
-    for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
-        if (strcmp(splash_anims[i].name, anim_name) == 0) { mini_anim = &splash_anims[i]; break; }
+    for (int i = 0; i < art().count; i++) {
+        if (strcmp(art().anims[i].name, anim_name) == 0) { mini_anim = &art().anims[i]; break; }
     }
     if (!mini_anim) return NULL;
     const int amax = (mini_anim->w > mini_anim->h) ? mini_anim->w : mini_anim->h;
@@ -450,8 +485,8 @@ static const char* MAS_ACTS_BY_RATE[4][4] = {
 static const uint16_t MAS_STILL_MS_BY_RATE[4] = { 10000, 7000, 5000, 3500 };
 
 static const splash_anim_def_t* anim_by_name(const char *n) {
-    for (int i = 0; i < SPLASH_ANIM_COUNT; i++)
-        if (strcmp(splash_anims[i].name, n) == 0) return &splash_anims[i];
+    for (int i = 0; i < art().count; i++)
+        if (strcmp(art().anims[i].name, n) == 0) return &art().anims[i];
     return NULL;
 }
 
@@ -726,7 +761,7 @@ void splash_init(lv_obj_t *parent) {
 
     resolve_group_lists();
 
-    if (SPLASH_ANIM_COUNT == 0) {
+    if (art().count == 0) {
         show_placeholder();
     } else {
         lv_obj_add_flag(label_status, LV_OBJ_FLAG_HIDDEN);
@@ -734,7 +769,7 @@ void splash_init(lv_obj_t *parent) {
         // PSRAM path pre-renders frame 0 into the canvas buffer. The direct
         // path draws nothing here — render_frame() bails while inactive, so the
         // splash never paints to the panel before it's actually shown.
-        const splash_anim_def_t *a = &splash_anims[0];
+        const splash_anim_def_t *a = &art().anims[0];
         render_frame(compose_stage(a, 0), a->palette);
 #endif
         frame_started_ms = millis();
@@ -744,19 +779,19 @@ void splash_init(lv_obj_t *parent) {
 }
 
 void splash_tick(void) {
-    if (!active || SPLASH_ANIM_COUNT == 0) return;
+    if (!active || art().count == 0) return;
     const uint32_t now = millis();
 
 #if SPLASH_DIRECT_DRAW
     // Deferred full repaint after a (re)show — runs now that LVGL has drawn the
     // black background this loop iteration.
     if (force_full) {
-        const splash_anim_def_t *fa = &splash_anims[cur_anim];
+        const splash_anim_def_t *fa = &art().anims[cur_anim];
         if (fa->frame_count) render_frame(compose_stage(fa, cur_frame), fa->palette);
     }
 #endif
 
-    const splash_anim_def_t *a = &splash_anims[cur_anim];
+    const splash_anim_def_t *a = &art().anims[cur_anim];
     if (a->frame_count == 0) return;
 
     if (walk_active) walk_choreo(a);
@@ -825,20 +860,34 @@ void splash_tick(void) {
     render_frame(compose_stage(a, cur_frame), a->palette);
 }
 
-void splash_next(void) {
-    if (SPLASH_ANIM_COUNT == 0) return;
-    cur_anim = (cur_anim + 1) % SPLASH_ANIM_COUNT;
+void splash_reload_art(void) {
+    // Group lists hold indices into the previous set's table, and cur_anim
+    // may point past the end of a smaller one.
+    resolve_group_lists();
+    if (art().count == 0) return;
+    if (cur_anim >= art().count) cur_anim = 0;
     cur_frame = 0;
     frame_started_ms = millis();
     last_pick_ms = frame_started_ms;
-    const splash_anim_def_t *a = &splash_anims[cur_anim];
+    const splash_anim_def_t *a = &art().anims[cur_anim];
+    anim_reset(a);
+    if (active) render_frame(compose_stage(a, 0), a->palette);
+}
+
+void splash_next(void) {
+    if (art().count == 0) return;
+    cur_anim = (cur_anim + 1) % art().count;
+    cur_frame = 0;
+    frame_started_ms = millis();
+    last_pick_ms = frame_started_ms;
+    const splash_anim_def_t *a = &art().anims[cur_anim];
     anim_reset(a);
     render_frame(compose_stage(a, 0), a->palette);
     Serial.printf("splash: -> %s\n", a->name);
 }
 
 void splash_pick_for_current_rate(void) {
-    if (SPLASH_ANIM_COUNT == 0) return;
+    if (art().count == 0) return;
     int g = usage_rate_group();
     if (g < 0 || g >= GROUP_COUNT) g = 0;
     if (group_size[g] == 0) return;
@@ -852,7 +901,7 @@ void splash_pick_for_current_rate(void) {
     cur_frame = 0;
     frame_started_ms = millis();
     last_pick_ms = frame_started_ms;
-    const splash_anim_def_t *a = &splash_anims[cur_anim];
+    const splash_anim_def_t *a = &art().anims[cur_anim];
     anim_reset(a);
     render_frame(compose_stage(a, 0), a->palette);
 }

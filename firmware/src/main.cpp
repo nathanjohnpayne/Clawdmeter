@@ -6,6 +6,7 @@
 
 #include "data.h"
 #include "ui.h"
+#include "theme.h"
 #include "ble.h"
 #include "splash.h"
 #include "usage_rate.h"
@@ -285,6 +286,10 @@ static void pair_tick(void) {
     }
 }
 
+// Hold on SECONDARY that means "switch provider" rather than "send Shift+Tab".
+// Long enough not to trip on a firm tap, short enough not to feel stuck.
+#define MODE_HOLD_MS 600
+
 void loop() {
     idle_tick();
     lv_timer_handler();
@@ -301,6 +306,7 @@ void loop() {
     if (!idle_is_asleep()) display_hal_tick();
 
     // ---- Physical buttons ----
+    //   SECONDARY long-press → cycle provider mode (see MODE_HOLD_MS)
     //   PRIMARY   → HID Space  (Claude Code voice-mode PTT)
     //   SECONDARY → HID Shift+Tab  (mode toggle; only if the board has one)
     //   PWR       → on splash: cycle animations; on usage: cycle brightness;
@@ -325,19 +331,40 @@ void loop() {
         }
 
         if (board_caps().button_count >= 2) {
-            static bool secondary_was = false;
-            static bool secondary_wake_swallowed = false;
+            // SECONDARY carries two actions, split by how long it is held.
+            // The HID keystroke therefore fires on RELEASE, not on press:
+            // until the button comes up we do not know which action was
+            // meant. Shift+Tab is a discrete keystroke, so deferring it is
+            // invisible -- unlike PRIMARY, where Space is held-to-talk and
+            // the press edge is load-bearing.
+            static bool     secondary_was = false;
+            static bool     secondary_wake_swallowed = false;
+            static uint32_t secondary_down_ms = 0;
+            static bool     secondary_consumed = false;
             bool secondary_now = input_hal_is_held(INPUT_BTN_SECONDARY);
-            if (secondary_now != secondary_was) {
-                if (secondary_now) {
-                    if (idle_consume_wake_press()) secondary_wake_swallowed = true;
-                    else                            ble_keyboard_press(0x2B, 0x02);  // HID Tab + LEFT_SHIFT
-                } else {
-                    if (secondary_wake_swallowed) secondary_wake_swallowed = false;
-                    else                          ble_keyboard_release();
+
+            if (secondary_now && !secondary_was) {
+                secondary_down_ms = millis();
+                secondary_consumed = false;
+                if (idle_consume_wake_press()) secondary_wake_swallowed = true;
+            } else if (secondary_now && !secondary_consumed &&
+                       !secondary_wake_swallowed &&
+                       millis() - secondary_down_ms >= MODE_HOLD_MS) {
+                // Fire on the threshold rather than on release, so the mode
+                // flips under your thumb and you can let go once you see it.
+                theme_set_mode(theme_next_mode());
+                splash_reload_art();
+                ui_apply_theme();
+                secondary_consumed = true;
+                Serial.printf("mode: -> %s\n", theme().name);
+            } else if (!secondary_now && secondary_was) {
+                if (secondary_wake_swallowed)   secondary_wake_swallowed = false;
+                else if (!secondary_consumed) {
+                    ble_keyboard_press(0x2B, 0x02);   // HID Tab + LEFT_SHIFT
+                    ble_keyboard_release();
                 }
-                secondary_was = secondary_now;
             }
+            secondary_was = secondary_now;
         }
 
         if (power_hal_pwr_pressed()) {

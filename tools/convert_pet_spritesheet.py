@@ -102,11 +102,25 @@ def downsample(frame, stage_w, stage_h):
     return out
 
 
+def unpack565(v):
+    """RGB565 back to 8-bit channels, for distance matching in the same space."""
+    r = (v >> 11) & 0x1F
+    g = (v >> 5) & 0x3F
+    b = v & 0x1F
+    return (r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)
+
+
 def build_palette(all_cells):
-    """The <=15 most common colors, plus index 0 reserved for background."""
-    counts = Counter(rgb for rgb, drawn in all_cells if drawn)
-    top = [rgb for rgb, _ in counts.most_common(PALETTE_SIZE - 1)]
-    return top
+    """The <=15 most common colors, counted AFTER quantizing to RGB565.
+
+    Counting in RGB888 first is what you reach for, and it is wrong here: the
+    soft shading means the top 15 source colors are near-duplicates that
+    collapse onto 3 distinct 565 values, so twelve palette slots are spent on
+    colors the panel cannot tell apart and the shading flattens out. Counting
+    in the destination space spends every slot on a visibly distinct color.
+    """
+    counts = Counter(rgb565(*rgb) for rgb, drawn in all_cells if drawn)
+    return [unpack565(v) for v, _ in counts.most_common(PALETTE_SIZE - 1)]
 
 
 def nearest(rgb, palette):
@@ -189,7 +203,12 @@ def main():
                          for v in cropped[len(cropped) // 2]])
             img.resize((w * 8, h * 8), Image.NEAREST).save(d / f"{name}.png")
 
-    pal565 = [rgb565(*c) for c in palette]
+    # Index 0 is the BACKGROUND slot -- the engine renders code 0 fully
+    # transparent (splash.cpp: `al = code ? 255 : 0`) and indexes palette[code]
+    # directly. Cell codes therefore start at 1, so the real colors must be
+    # shifted up by one; emitting them from index 0 renders every frame one
+    # color off, with the most common color becoming the background.
+    pal565 = [0x0000] + [rgb565(*c) for c in palette]
     pal565 += [0] * (PALETTE_SIZE - len(pal565))
 
     out = [
@@ -226,7 +245,7 @@ def main():
     for d in defs:
         n = len(d["frames"])
         out.append(f'    {{ "{d["name"]}", "{d["category"]}", {d["w"]}, {d["h"]}, '
-                   f'{d["ox"]}, {d["oy"]}, {n}, 0, {n}, {len(palette)}, '
+                   f'{d["ox"]}, {d["oy"]}, {n}, 0, {n}, {len(palette) + 1}, '
                    f'pet_palette, pet_{d["name"]}_frames, pet_{d["name"]}_holds }},')
     out.append("};")
 

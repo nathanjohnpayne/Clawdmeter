@@ -811,6 +811,41 @@ void ui_update_ble_status(ble_state_t state, const char* name, const char* mac) 
     update_view_state();
 }
 
+void ui_apply_theme(void) {
+    lv_obj_set_style_bg_color(lv_screen_active(), COL_BG, 0);
+    if (splash_get_root()) lv_obj_set_style_bg_color(splash_get_root(), COL_BG, 0);
+
+    lv_obj_t* panels[] = { panel_session, panel_weekly };
+    for (unsigned i = 0; i < sizeof(panels) / sizeof(panels[0]); i++)
+        if (panels[i]) lv_obj_set_style_bg_color(panels[i], COL_PANEL, 0);
+
+    lv_obj_t* bars[] = { bar_session, bar_weekly };
+    for (unsigned i = 0; i < sizeof(bars) / sizeof(bars[0]); i++)
+        if (bars[i]) lv_obj_set_style_bg_color(bars[i], COL_BAR_BG, LV_PART_MAIN);
+
+    // Pills: text over the track color.
+    lv_obj_t* pills[] = { lbl_session_label, lbl_weekly_label };
+    for (unsigned i = 0; i < sizeof(pills) / sizeof(pills[0]); i++) {
+        if (!pills[i]) continue;
+        lv_obj_set_style_text_color(pills[i], COL_TEXT, 0);
+        lv_obj_set_style_bg_color(pills[i], COL_BAR_BG, 0);
+    }
+
+    lv_obj_t* bright[] = { lbl_title, lbl_session_pct, lbl_weekly_pct,
+                           lbl_session_pct_sym };
+    for (unsigned i = 0; i < sizeof(bright) / sizeof(bright[0]); i++)
+        if (bright[i]) lv_obj_set_style_text_color(bright[i], COL_TEXT, 0);
+
+    lv_obj_t* dim[] = { lbl_session_reset, lbl_weekly_reset, lbl_spending_desc };
+    for (unsigned i = 0; i < sizeof(dim) / sizeof(dim[0]); i++)
+        if (dim[i]) lv_obj_set_style_text_color(dim[i], COL_DIM, 0);
+
+    if (lbl_anim) lv_obj_set_style_text_color(lbl_anim, COL_ACCENT, 0);
+
+    // pair_group and idle_group are built lazily and are only on screen when
+    // disconnected or asleep; they pick the new palette up when next built.
+}
+
 void ui_update_battery(int percent, bool charging) {
     if (!battery_img) return;
     int idx;

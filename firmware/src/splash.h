@@ -12,6 +12,12 @@ void splash_tick(void);
 // Cycle to the next animation in the catalog.
 void splash_next(void);
 
+// Re-bind to the art set for the current theme mode. Call after
+// theme_set_mode(): the two art sets have different animations, different
+// stage sizes and different rate groups, so the cached group lists and the
+// current animation index are stale the moment the mode changes.
+void splash_reload_art(void);
+
 // Show/hide the splash container.
 void splash_show(void);
 void splash_hide(void);
