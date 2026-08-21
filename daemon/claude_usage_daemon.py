@@ -527,25 +527,53 @@ _CODEX = CodexCollector()
 def codex_payload() -> dict | None:
     """Codex usage in the device's wire shape, or None when unavailable.
 
-    Plan shapes differ from Anthropic's. A Codex Pro account meters a single
-    weekly window with no 5-hour window at all, so the session slot is left
-    absent (sr = -1) rather than reported as 0% -- an empty panel is honest,
-    a zeroed one is a lie about a quota that does not exist.
+    Plan shapes differ from Anthropic's. A Codex Pro account meters ONE
+    account-wide weekly window and no 5-hour window -- but it also meters
+    specific models separately, and GPT-5.3-Codex-Spark carries its own 5h and
+    weekly buckets. The device has two panels, so the 5h panel falls back to a
+    model's 5h bucket when the account has none. That is what the ChatGPT
+    settings screen shows too: "General usage limits" plus a separate
+    "GPT-5.3-Codex-Spark usage limits" block.
+
+    A slot with no quota behind it at all stays absent (sr/wr = -1) rather than
+    reporting 0% -- an empty panel is honest, a zeroed one is a lie about a
+    limit that does not exist.
     """
     snap = _CODEX.collect_blocking()
     if snap is None:
         return None
 
-    def slot(label):
-        w = snap.windows.get(label)
+    # Both panels should describe the SAME quota, or the screen reads as two
+    # windows onto one limit when it is really two unrelated limits side by
+    # side. So a source that covers both windows wins outright: the account
+    # when it meters both, otherwise the first model that does. Only when
+    # nothing covers both does this fall back to filling each slot from
+    # wherever it can.
+    source, model = snap.windows, None
+    if not (WINDOW_5H in source and WINDOW_7D in source):
+        for name, windows in snap.model_windows.items():
+            if WINDOW_5H in windows and WINDOW_7D in windows:
+                source, model = windows, name
+                break
+
+    def wire(label):
+        w = source.get(label)
+        if w is None:
+            # Nothing covered both windows; take this one wherever it lives.
+            w = snap.windows.get(label)
+            if w is None:
+                for windows in snap.model_windows.values():
+                    if label in windows:
+                        w = windows[label]
+                        break
         if w is None:
             return None, -1
         mins = -1 if w.resets_in is None else max(0, int(w.resets_in) // 60)
         return int(round(w.used_percent)), mins
 
-    s_pct, s_reset = slot(WINDOW_5H)
-    w_pct, w_reset = slot(WINDOW_7D)
-    return {
+    s_pct, s_reset = wire(WINDOW_5H)
+    w_pct, w_reset = wire(WINDOW_7D)
+    payload = {
         "s": s_pct if s_pct is not None else 0,
         "sr": s_reset,
         "w": w_pct if w_pct is not None else 0,
@@ -558,6 +586,15 @@ def codex_payload() -> dict | None:
         "has_s": s_pct is not None,
         "has_w": w_pct is not None,
     }
+    # Name the model when the panels are showing a model's quota rather than
+    # the account's, so the screen says which limit it reports. Short form
+    # only: the pill is a few characters wide and "GPT-5.3-Codex-Spark" would
+    # never fit. "Spark" is the part that distinguishes it.
+    if model:
+        short = model.rsplit("-", 1)[-1][:12]
+        payload["sm"] = short
+        payload["wm"] = short
+    return payload
 
 
 async def poll_active_payload(selector: PlanSelector = _SELECTOR) -> dict | None:

@@ -19,6 +19,10 @@ struct UsageData {
     // the UI must render as blank rather than as a convincing 0%.
     bool has_session;
     bool has_weekly;
+    // Non-empty when a panel is showing a specific model's quota rather than
+    // the account's, e.g. "Spark". The pill says so instead of "Current".
+    char session_model[13];
+    char weekly_model[13];
     bool ok;                 // data parse succeeded
     bool valid;              // false until first successful parse
 };

@@ -653,7 +653,10 @@ void ui_update(const UsageData* data) {
         if (panel_weekly) lv_obj_clear_flag(panel_weekly, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_set_style_text_font(lbl_session_pct, L.pct_font, 0);
-        lv_label_set_text(lbl_session_label, "Current");
+        // A model-specific quota is not "Current" -- name it, so the two
+        // panels are not read as two windows onto the same limit.
+        lv_label_set_text(lbl_session_label,
+                          data->session_model[0] ? data->session_model : "Current");
         lv_obj_clear_flag(lbl_session_reset, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lbl_spending_desc,   LV_OBJ_FLAG_HIDDEN);
@@ -790,18 +793,12 @@ void ui_tick_anim(void) {
 
     static char buf[80];
     if (theme().quiet_status) {
-        // Static dot, no trailing ellipsis: nothing is in progress once the
-        // link is up, and an animated "…" says otherwise. Only the
-        // not-yet-connected states keep the spinner, where it is truthful.
-        //
-        // The dot is spinner_frames[0] (U+00B7), not U+25CF: the fonts are
-        // subset to seven non-ASCII glyphs -- the five spinner asterisks, the
-        // ellipsis and this -- so any other circle renders as tofu. It also
-        // happens to be the right glyph conceptually, since the resting state
-        // is the spinner's own first frame.
-        const char* glyph = s_ble_connected ? spinner_frames[0]
-                                            : spinner_frames[anim_spinner_idx];
-        snprintf(buf, sizeof(buf), "%s %s", glyph, text);
+        // The glyph keeps animating even when connected. A frozen indicator on
+        // a desk display reads as a hung device, and liveness is the one thing
+        // this line genuinely has to convey -- the spec's "do not animate when
+        // connected" is about the trailing "…", which claims work is in
+        // progress. That is dropped; the pulse stays.
+        snprintf(buf, sizeof(buf), "%s %s", spinner_frames[anim_spinner_idx], text);
     } else {
         // "<glyph> <Title-case word>…"
         snprintf(buf, sizeof(buf), "%s %s\xE2\x80\xA6",

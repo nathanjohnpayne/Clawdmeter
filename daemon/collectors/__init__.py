@@ -51,6 +51,13 @@ class UsageSnapshot:
     windows: dict[str, Window] = field(default_factory=dict)
 
     # Where the number came from, and whether it was read on demand.
+    # Per-model quotas, keyed by model name. Some plans meter a specific model
+    # separately from the account: a Codex Pro account has one account-wide
+    # weekly limit plus a GPT-5.3-Codex-Spark bucket with its own 5h and weekly
+    # windows. Kept apart from `windows` because they are different quotas --
+    # merging them would report one limit's headroom against another's usage.
+    model_windows: dict[str, dict[str, Window]] = field(default_factory=dict)
+
     source: str = "unknown"
 
     # Set by the collector, never inferred from stale_seconds: a log file

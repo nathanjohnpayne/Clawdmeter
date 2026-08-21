@@ -120,6 +120,8 @@ static void parse_provider(JsonObjectConst doc, UsageData* out) {
     // Default true: a daemon that does not send these meters both windows.
     out->has_session = doc["has_s"] | true;
     out->has_weekly  = doc["has_w"] | true;
+    strlcpy(out->session_model, doc["sm"] | "", sizeof(out->session_model));
+    strlcpy(out->weekly_model,  doc["wm"] | "", sizeof(out->weekly_model));
     out->ok = doc["ok"] | false;
     out->valid = true;
 }

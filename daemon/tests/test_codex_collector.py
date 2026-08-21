@@ -216,3 +216,62 @@ def test_poll_active_itself_merges_codex(monkeypatch):
     assert dead is False
     assert payload["s"] == 25            # Claude still at the top level
     assert payload["x"] == {"w": 83, "has_w": True}
+
+
+def test_both_panels_come_from_one_quota_family(monkeypatch):
+    """Codex Pro meters an account weekly plus a separate Spark 5h + weekly.
+
+    The device has two panels, so they must describe the SAME limit or the
+    screen reads as two windows onto one quota when it is really two unrelated
+    ones. Spark covers both windows, so both panels take Spark -- and both
+    pills say so. The account weekly is deliberately not shown.
+    """
+    from daemon.collectors import UsageSnapshot, Window
+    import daemon.claude_usage_daemon as mod
+
+    snap = UsageSnapshot(
+        provider="codex", plan="pro",
+        windows={WINDOW_7D: Window(84.0, resets_in=6870 * 60)},
+        model_windows={"GPT-5.3-Codex-Spark": {
+            WINDOW_5H: Window(3.0, resets_in=300 * 60),
+            WINDOW_7D: Window(7.0, resets_in=10080 * 60)}})
+    monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: snap)
+
+    p = mod.codex_payload()
+    assert (p["s"], p["sr"]) == (3, 300)
+    assert (p["w"], p["wr"]) == (7, 10080)      # Spark's weekly, not the 84%
+    assert p["sm"] == p["wm"] == "Spark"        # pill-sized, not the full name
+
+
+def test_account_wins_when_it_meters_both_windows(monkeypatch):
+    """A model bucket is a fallback for a gap, never a replacement."""
+    from daemon.collectors import UsageSnapshot, Window
+    import daemon.claude_usage_daemon as mod
+
+    snap = UsageSnapshot(
+        provider="codex", plan="pro",
+        windows={WINDOW_5H: Window(30.0, resets_in=600),
+                 WINDOW_7D: Window(50.0, resets_in=6000)},
+        model_windows={"GPT-5.3-Codex-Spark": {
+            WINDOW_5H: Window(99.0, resets_in=60),
+            WINDOW_7D: Window(99.0, resets_in=60)}})
+    monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: snap)
+
+    p = mod.codex_payload()
+    assert (p["s"], p["w"]) == (30, 50)
+    assert "sm" not in p and "wm" not in p
+
+
+def test_account_window_wins_over_a_model_window(monkeypatch):
+    """A model bucket is a fallback, never a replacement."""
+    from daemon.collectors import UsageSnapshot, Window
+    import daemon.claude_usage_daemon as mod
+
+    snap = UsageSnapshot(
+        provider="codex", plan="pro",
+        windows={WINDOW_5H: Window(30.0, resets_in=600)},
+        model_windows={"GPT-5.3-Codex-Spark": {WINDOW_5H: Window(99.0, resets_in=60)}})
+    monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: snap)
+
+    p = mod.codex_payload()
+    assert p["s"] == 30 and "sm" not in p

@@ -110,10 +110,21 @@ def collect_via_oauth(codex_dir: Path = DEFAULT_CODEX_DIR) -> UsageSnapshot | No
     windows = _windows_from_endpoint(raw.get("rate_limit") or {})
     if not windows:
         return None
+
+    model_windows = {}
+    for entry in raw.get("additional_rate_limits") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("limit_name") or entry.get("metered_feature")
+        w = _windows_from_endpoint(entry.get("rate_limit") or {})
+        if name and w:
+            model_windows[name] = w
+
     return UsageSnapshot(
         provider="codex",
         plan=raw.get("plan_type"),
         windows=windows,
+        model_windows=model_windows,
         source="oauth:wham/usage",
         live=True,
         stale_seconds=0,
