@@ -64,11 +64,17 @@ class UsageSnapshot:
 
 
 class Collector(Protocol):
-    """What the daemon requires of every provider."""
+    """What the daemon requires of every provider.
+
+    `collect` is async because the daemon's loop is asyncio-driven (bleak owns
+    the BLE connection). Blocking work -- HTTP, and reading rollout logs that
+    can run to hundreds of megabytes -- must be offloaded rather than run on
+    the event loop, or it stalls the device link while it runs.
+    """
 
     provider: str
 
-    def collect(self) -> UsageSnapshot | None:
+    async def collect(self) -> UsageSnapshot | None:
         """Current usage, or None if unavailable (signed out, token dead,
         provider unreachable). Must not raise for expected failures, and must
         never refresh a token it does not own."""

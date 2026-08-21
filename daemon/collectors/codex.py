@@ -29,6 +29,7 @@ never a token refresh -- the Codex CLI owns that token.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -204,5 +205,10 @@ class CodexCollector:
     def __init__(self, codex_dir: Path = DEFAULT_CODEX_DIR):
         self.codex_dir = codex_dir
 
-    def collect(self) -> UsageSnapshot | None:
+    async def collect(self) -> UsageSnapshot | None:
+        # Both readers block -- urllib on the network, and the log fallback on
+        # file IO across every rollout file. Off the event loop they go.
+        return await asyncio.to_thread(self._collect_blocking)
+
+    def _collect_blocking(self) -> UsageSnapshot | None:
         return collect_via_oauth(self.codex_dir) or collect_via_logs(self.codex_dir)

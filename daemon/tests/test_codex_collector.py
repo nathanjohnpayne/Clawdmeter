@@ -10,6 +10,7 @@ The two bugs these guard against were both found on real data:
 
 Run: python -m pytest daemon/tests/test_codex_collector.py -x -q
 """
+import asyncio
 import json
 import urllib.error
 from unittest.mock import patch
@@ -121,9 +122,34 @@ def test_log_snapshot_is_never_reported_as_live(tmp_path):
 
 # --- fallback ordering ------------------------------------------------------
 
+def _run(coro):
+    """Run a coroutine from a sync test on its own event loop."""
+    return asyncio.run(coro)
+
+
 def test_logs_used_only_when_the_endpoint_fails(tmp_path):
     _auth_dir(tmp_path)
     _rollout(tmp_path, ACCOUNT)
     with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
-        snap = CodexCollector(tmp_path).collect()
+        snap = _run(CodexCollector(tmp_path).collect())
     assert snap.source.startswith("logs:")
+
+
+def test_endpoint_preferred_over_logs(tmp_path):
+    """A live read wins even when a (necessarily staler) log record exists."""
+    _auth_dir(tmp_path)
+    _rollout(tmp_path, ACCOUNT)
+
+    class _Resp:
+        status = 200
+        def read(self):
+            return json.dumps({"plan_type": "pro", "rate_limit": {
+                "primary_window": {"used_percent": 42,
+                                   "limit_window_seconds": 604800,
+                                   "reset_after_seconds": 100}}}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    with patch("urllib.request.urlopen", return_value=_Resp()):
+        snap = _run(CodexCollector(tmp_path).collect())
+    assert snap.live and snap.windows[WINDOW_7D].used_percent == 42
