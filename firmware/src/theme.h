@@ -96,8 +96,13 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
     },
 };
 
+// Load the saved mode from NVS. Must run BEFORE ui_init() and splash_init():
+// the mode picks the palette, the font family (via compute_layout) and the art
+// set, all of which are read while those build their widgets.
+void theme_init(void);
+
 // Active palette. Mode is runtime state so the button handler can cycle it
-// without a rebuild.
+// without a rebuild; theme_set_mode() persists the choice.
 const Theme& theme(void);
 theme_mode_t theme_mode(void);
 void theme_set_mode(theme_mode_t mode);

@@ -240,6 +240,7 @@ void setup() {
     display_hal_init();
     display_hal_begin();
     idle_init();        // takes over panel brightness and starts the idle timer
+    theme_init();       // restore the provider mode before anything reads the theme
     brightness_init();  // load the user's saved brightness level and apply via idle
 
     power_hal_init();
