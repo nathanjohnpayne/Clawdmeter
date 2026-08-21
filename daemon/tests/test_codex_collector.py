@@ -190,3 +190,29 @@ def test_no_codex_yields_no_payload(monkeypatch):
     import daemon.claude_usage_daemon as mod
     monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: None)
     assert mod.codex_payload() is None
+
+
+def test_poll_active_itself_merges_codex(monkeypatch):
+    """Regression: the merge must live where the run loop actually calls.
+
+    It was first written into poll_active_payload, which reads like the entry
+    point but is not one -- run() calls poll_active() directly because it needs
+    the all-dead flag. Every unit test passed while the device never once
+    received an "x" key. Assert against poll_active, not the wrapper.
+    """
+    import asyncio
+    from pathlib import Path
+    import daemon.claude_usage_daemon as mod
+
+    monkeypatch.setattr(mod, "read_config_dirs", lambda: [Path("/fake")])
+    monkeypatch.setattr(mod, "read_token_for", lambda d: "tok")
+
+    async def fake_poll_api(_token):
+        return {"s": 25, "ok": True}
+    monkeypatch.setattr(mod, "poll_api", fake_poll_api)
+    monkeypatch.setattr(mod, "codex_payload", lambda: {"w": 83, "has_w": True})
+
+    payload, dead = asyncio.run(mod.poll_active(mod.PlanSelector()))
+    assert dead is False
+    assert payload["s"] == 25            # Claude still at the top level
+    assert payload["x"] == {"w": 83, "has_w": True}

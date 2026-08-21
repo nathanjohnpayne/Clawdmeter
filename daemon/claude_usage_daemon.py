@@ -506,7 +506,19 @@ async def poll_active(selector: PlanSelector = _SELECTOR) -> tuple[dict | None, 
     active = selector.choose(sessions)
     if len(dirs) > 1:
         log(f"Active plan: {active} (s={sessions[active]})")
-    return payloads[active], False
+
+    payload = payloads[active]
+    # Second provider rides along under "x" so the device can switch mode
+    # without waiting for another poll. Merged here rather than in
+    # poll_active_payload because the run loop calls this function directly.
+    try:
+        codex = await asyncio.to_thread(codex_payload)
+    except Exception as exc:            # a second provider must never take
+        log(f"Codex poll failed: {exc}")  # down the primary one
+        codex = None
+    if codex:
+        payload["x"] = codex
+    return payload, False
 
 
 _CODEX = CodexCollector()
@@ -551,21 +563,12 @@ def codex_payload() -> dict | None:
 async def poll_active_payload(selector: PlanSelector = _SELECTOR) -> dict | None:
     """The active plan's payload, or None when no dir yields one this cycle.
 
-    Claude's fields stay at the top level and Codex, when readable, is nested
-    under "x". The device holds a slot per provider and picks by its current
-    mode, so switching mode on the device is instant rather than waiting on
-    the next poll -- and an older firmware simply ignores the extra key.
+    Thin wrapper over :func:`poll_active` for callers that don't need the
+    all-dead flag. The Codex merge lives in poll_active itself -- the run loop
+    calls that directly for the dead flag, so anything merged here would never
+    reach the device.
     """
     payload, _dead = await poll_active(selector)
-    if payload is None:
-        return None
-    try:
-        codex = await asyncio.to_thread(codex_payload)
-    except Exception as exc:                      # never let a second provider
-        log(f"Codex poll failed: {exc}")          # take down the primary one
-        codex = None
-    if codex:
-        payload["x"] = codex
     return payload
 
 
