@@ -450,6 +450,8 @@ void splash_mini_tick(void) {
 // static clawd_still.h icon on the C6); driven by splash_mascot_tick() from
 // the main loop, independent of the splash screen itself.
 static lv_obj_t *mas_img = NULL;
+static int mas_slot_px = 0;    // height available in the corner slot
+static int mas_max_cell = 3;   // largest px-per-cell worth using there
 static lv_obj_t *mas_lurk_img = NULL;
 static uint8_t  *mas_buf = NULL;       // planar RGB565A8, sized for largest act
 static uint8_t  *mas_lurk_buf = NULL;
@@ -522,8 +524,18 @@ static void mas_render(const splash_anim_def_t *a, uint16_t frame, bool mirror,
     lv_obj_invalidate(img);
 }
 
+// Largest cell at which the active set's still pose fits the slot.
+static int mas_fit_cell(void) {
+    const splash_anim_def_t *still = anim_by_name("walking");
+    if (!still || still->h <= 0) return mas_max_cell;
+    int cell = mas_slot_px / still->h;
+    if (cell > mas_max_cell) cell = mas_max_cell;
+    return cell < 1 ? 1 : cell;
+}
+
 static void mas_show_still(void) {
     mas_anim = anim_by_name("walking");     // frame 0 == the official still pose
+    mas_cell = mas_fit_cell();              // refit: the sets differ in height
     mas_frame = 0;
     mas_mode = MAS_STILL;
     mas_mode_started = millis();
@@ -537,7 +549,7 @@ static void mas_show_still(void) {
 // Largest frame across EVERY art set, not just the active one. The mascot
 // buffer is allocated once, at create time, but the mode can switch at any
 // point afterwards -- and the sets are not close in size: Clawd's biggest act
-// bbox is 28x21 cells while Codey's laptop/happy frames reach 35x40, 2.4x the
+// bbox is 28x21 cells while Codey's frames reach 29x34, nearly 1.7x the
 // area. Sizing to the active set overflows mas_buf on the first mode switch.
 static void max_frame_cells(int *out_w, int *out_h) {
     int mw = 0, mh = 0;
@@ -552,17 +564,11 @@ static void max_frame_cells(int *out_w, int *out_h) {
     *out_h = mh;
 }
 
-int splash_mascot_fit_cell(int slot_px, int max_cell) {
-    const splash_anim_def_t *still = anim_by_name("walking");   // frame 0 == still pose
-    if (!still || still->h <= 0) return max_cell;
-    int cell = slot_px / still->h;
-    if (cell > max_cell) cell = max_cell;
-    if (cell < 1) cell = 1;
-    return cell;
-}
-
-lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cell) {
-    mas_cell = cell;
+lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y,
+                               int slot_px, int max_cell) {
+    mas_slot_px = slot_px;
+    mas_max_cell = max_cell;
+    mas_cell = mas_fit_cell();
     mas_slot_x = slot_x;
     mas_feet_y = feet_y;
     mas_screen_w = board_caps().width;
@@ -900,6 +906,12 @@ void splash_reload_art(void) {
     const splash_anim_def_t *a = &art().anims[cur_anim];
     anim_reset(a);
     if (active) render_frame(compose_stage(a, 0), a->palette);
+
+    // The corner mascot holds its own pointer into the previous set's table
+    // and keeps rendering from it -- Clawd carried on walking across a Codex
+    // screen. Re-resolving through mas_show_still() rebinds it by name against
+    // the new set and drops any trip in progress.
+    if (mas_img) mas_show_still();
 }
 
 void splash_next(void) {
