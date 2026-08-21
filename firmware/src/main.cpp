@@ -217,6 +217,19 @@ static void check_serial_cmd() {
             cmd_buf[cmd_pos] = '\0';
             if (strcmp(cmd_buf, "screenshot") == 0) send_screenshot();
             else if (strcmp(cmd_buf, "buzz") == 0)  sound_hal_play_reset();
+            // Screen and mode over serial so a UI change can be verified on
+            // real hardware without a reflash. The documented workaround was
+            // to edit the default boot screen and flash again, which is a
+            // 30-second round trip per look and cannot reach the mode at all.
+            else if (strcmp(cmd_buf, "usage") == 0)  ui_show_screen(SCREEN_USAGE);
+            else if (strcmp(cmd_buf, "splash") == 0) ui_show_screen(SCREEN_SPLASH);
+            else if (strcmp(cmd_buf, "mode") == 0) {
+                theme_set_mode(theme_next_mode());
+                splash_reload_art();
+                ui_apply_theme();
+                ui_update(active_usage());
+                Serial.printf("mode: -> %s\n", theme().name);
+            }
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
             cmd_buf[cmd_pos++] = c;
