@@ -218,48 +218,45 @@ def test_poll_active_itself_merges_codex(monkeypatch):
     assert payload["x"] == {"w": 83, "has_w": True}
 
 
-def test_both_panels_come_from_one_quota_family(monkeypatch):
-    """Codex Pro meters an account weekly plus a separate Spark 5h + weekly.
+def test_model_weekly_on_top_account_weekly_below(monkeypatch):
+    """Codex Pro has no account 5h window, so the panels are both weekly.
 
-    The device has two panels, so they must describe the SAME limit or the
-    screen reads as two windows onto one quota when it is really two unrelated
-    ones. Spark covers both windows, so both panels take Spark -- and both
-    pills say so. The account weekly is deliberately not shown.
+    Top carries the model's weekly, bottom the account's -- and the pills name
+    the scope, since being weekly is the one thing they have in common. Both
+    must be shown: Spark can sit at 0% while the account weekly is nearly
+    spent, and it is the account limit that actually stops you.
     """
     from daemon.collectors import UsageSnapshot, Window
     import daemon.claude_usage_daemon as mod
 
     snap = UsageSnapshot(
         provider="codex", plan="pro",
-        windows={WINDOW_7D: Window(84.0, resets_in=6870 * 60)},
+        windows={WINDOW_7D: Window(84.0, resets_in=6858 * 60)},
         model_windows={"GPT-5.3-Codex-Spark": {
             WINDOW_5H: Window(3.0, resets_in=300 * 60),
-            WINDOW_7D: Window(7.0, resets_in=10080 * 60)}})
+            WINDOW_7D: Window(0.0, resets_in=10080 * 60)}})
     monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: snap)
 
     p = mod.codex_payload()
-    assert (p["s"], p["sr"]) == (3, 300)
-    assert (p["w"], p["wr"]) == (7, 10080)      # Spark's weekly, not the 84%
-    assert p["sm"] == p["wm"] == "Spark"        # pill-sized, not the full name
+    assert (p["s"], p["sr"], p["sm"]) == (0, 10080, "Spark")
+    assert (p["w"], p["wr"], p["wm"]) == (84, 6858, "Overall")
 
 
-def test_account_wins_when_it_meters_both_windows(monkeypatch):
-    """A model bucket is a fallback for a gap, never a replacement."""
+def test_without_a_model_weekly_it_falls_back_to_plain_windows(monkeypatch):
+    """No model weekly to pair with: 5h on top, weekly below, unlabelled."""
     from daemon.collectors import UsageSnapshot, Window
     import daemon.claude_usage_daemon as mod
 
     snap = UsageSnapshot(
         provider="codex", plan="pro",
         windows={WINDOW_5H: Window(30.0, resets_in=600),
-                 WINDOW_7D: Window(50.0, resets_in=6000)},
-        model_windows={"GPT-5.3-Codex-Spark": {
-            WINDOW_5H: Window(99.0, resets_in=60),
-            WINDOW_7D: Window(99.0, resets_in=60)}})
+                 WINDOW_7D: Window(50.0, resets_in=6000)})
     monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: snap)
 
     p = mod.codex_payload()
     assert (p["s"], p["w"]) == (30, 50)
     assert "sm" not in p and "wm" not in p
+
 
 
 def test_account_window_wins_over_a_model_window(monkeypatch):

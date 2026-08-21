@@ -654,9 +654,13 @@ void ui_update(const UsageData* data) {
     } else {
         lv_obj_set_style_text_font(lbl_session_pct, L.pct_font, 0);
         // A model-specific quota is not "Current" -- name it, so the two
-        // panels are not read as two windows onto the same limit.
+        // panels are not read as two windows onto the same limit. Codex sends
+        // "Spark"/"Overall" here, since both of its panels are weekly windows
+        // and only the scope distinguishes them.
         lv_label_set_text(lbl_session_label,
                           data->session_model[0] ? data->session_model : "Current");
+        lv_label_set_text(lbl_weekly_label,
+                          data->weekly_model[0] ? data->weekly_model : "Weekly");
         lv_obj_clear_flag(lbl_session_reset, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lbl_spending_desc,   LV_OBJ_FLAG_HIDDEN);

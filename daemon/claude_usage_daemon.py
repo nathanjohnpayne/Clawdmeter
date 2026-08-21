@@ -543,36 +543,53 @@ def codex_payload() -> dict | None:
     if snap is None:
         return None
 
-    # Both panels should describe the SAME quota, or the screen reads as two
-    # windows onto one limit when it is really two unrelated limits side by
-    # side. So a source that covers both windows wins outright: the account
-    # when it meters both, otherwise the first model that does. Only when
-    # nothing covers both does this fall back to filling each slot from
-    # wherever it can.
-    source, model = snap.windows, None
-    if not (WINDOW_5H in source and WINDOW_7D in source):
-        for name, windows in snap.model_windows.items():
-            if WINDOW_5H in windows and WINDOW_7D in windows:
-                source, model = windows, name
-                break
+    # Panel mapping for Codex, which meters differently from Anthropic.
+    #
+    # A Codex Pro account has ONE account-wide weekly window, plus per-model
+    # buckets -- GPT-5.3-Codex-Spark carries its own 5h and weekly. There is no
+    # account 5h window at all, so the top panel cannot mirror Claude's
+    # "Current". Instead:
+    #
+    #   top    = the model's weekly quota  (labelled by model, e.g. "Spark")
+    #   bottom = the account weekly quota  ("Overall")
+    #
+    # Both are weekly windows, so the pills name the SCOPE rather than the
+    # window -- "Spark" against "Overall" -- because that is the only thing
+    # that distinguishes them. Showing both matters: Spark can sit at 0% while
+    # the account weekly is nearly spent, and it is the account limit that
+    # actually stops you.
+    account_week = snap.windows.get(WINDOW_7D)
+    model_name, model_week = None, None
+    for name, windows in snap.model_windows.items():
+        if WINDOW_7D in windows:
+            model_name, model_week = name, windows[WINDOW_7D]
+            break
 
-    def wire(label):
-        w = source.get(label)
-        if w is None:
-            # Nothing covered both windows; take this one wherever it lives.
+    if account_week is not None and model_week is not None:
+        top, top_label = model_week, model_name.rsplit("-", 1)[-1][:12]
+        bottom, bottom_label = account_week, "Overall"
+    else:
+        # No model weekly to pair with: fall back to the plain window mapping,
+        # 5h on top and weekly below, from wherever each is available.
+        def anywhere(label):
             w = snap.windows.get(label)
-            if w is None:
-                for windows in snap.model_windows.values():
-                    if label in windows:
-                        w = windows[label]
-                        break
+            if w is not None:
+                return w
+            for windows in snap.model_windows.values():
+                if label in windows:
+                    return windows[label]
+            return None
+        top, top_label = anywhere(WINDOW_5H), None
+        bottom, bottom_label = anywhere(WINDOW_7D), None
+
+    def wire(w):
         if w is None:
             return None, -1
         mins = -1 if w.resets_in is None else max(0, int(w.resets_in) // 60)
         return int(round(w.used_percent)), mins
 
-    s_pct, s_reset = wire(WINDOW_5H)
-    w_pct, w_reset = wire(WINDOW_7D)
+    s_pct, s_reset = wire(top)
+    w_pct, w_reset = wire(bottom)
     payload = {
         "s": s_pct if s_pct is not None else 0,
         "sr": s_reset,
@@ -586,14 +603,13 @@ def codex_payload() -> dict | None:
         "has_s": s_pct is not None,
         "has_w": w_pct is not None,
     }
-    # Name the model when the panels are showing a model's quota rather than
-    # the account's, so the screen says which limit it reports. Short form
-    # only: the pill is a few characters wide and "GPT-5.3-Codex-Spark" would
-    # never fit. "Spark" is the part that distinguishes it.
-    if model:
-        short = model.rsplit("-", 1)[-1][:12]
-        payload["sm"] = short
-        payload["wm"] = short
+    # Pill overrides. Short form only -- the pill is a few characters wide, so
+    # "GPT-5.3-Codex-Spark" would never fit and "Spark" is the distinguishing
+    # part. Absent means the device keeps its default label.
+    if top_label:
+        payload["sm"] = top_label
+    if bottom_label:
+        payload["wm"] = bottom_label
     return payload
 
 
