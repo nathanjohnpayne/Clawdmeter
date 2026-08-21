@@ -24,7 +24,7 @@ static int  cell      = 8;         // recomputed in splash_init()
 static int  canvas_w  = GRID * 8;
 static int  canvas_h  = GRID * 8;
 
-// Splash background: true black (matches THEME_BG and palette index 0
+// Splash background: true black (matches the active theme's bg and palette index 0
 // emitted by tools/convert_official_clawd.js). Used for the stage margins
 // and as palette fallback.
 #define COL_EMPTY    0x0000
@@ -667,7 +667,7 @@ void splash_init(lv_obj_t *parent) {
     splash_container = lv_obj_create(parent);
     lv_obj_set_size(splash_container, c.width, c.height);
     lv_obj_set_pos(splash_container, 0, 0);
-    lv_obj_set_style_bg_color(splash_container, THEME_BG, 0);
+    lv_obj_set_style_bg_color(splash_container, lv_color_hex(theme().bg), 0);
     lv_obj_set_style_bg_opa(splash_container, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(splash_container, 0, 0);
     lv_obj_set_style_pad_all(splash_container, 0, 0);

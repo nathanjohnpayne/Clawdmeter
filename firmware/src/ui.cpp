@@ -180,15 +180,17 @@ static void compute_layout(const BoardCaps& c) {
 
 // Anthropic brand palette — design tokens live in theme.h
 #include "theme.h"
-#define COL_BG        THEME_BG
-#define COL_PANEL     THEME_PANEL
-#define COL_TEXT      THEME_TEXT
-#define COL_DIM       THEME_DIM
-#define COL_ACCENT    THEME_ACCENT
-#define COL_GREEN     THEME_GREEN
-#define COL_AMBER     THEME_AMBER
-#define COL_RED       THEME_RED
-#define COL_BAR_BG    THEME_BAR_BG
+// Resolved against the active provider palette at each use, so a mode switch
+// only needs a restyle pass rather than a rebuild.
+#define COL_BG        lv_color_hex(theme().bg)
+#define COL_PANEL     lv_color_hex(theme().panel)
+#define COL_TEXT      lv_color_hex(theme().text)
+#define COL_DIM       lv_color_hex(theme().dim)
+#define COL_ACCENT    lv_color_hex(theme().accent)
+#define COL_GREEN     lv_color_hex(theme().green)
+#define COL_AMBER     lv_color_hex(theme().amber)
+#define COL_RED       lv_color_hex(theme().red)
+#define COL_BAR_BG    lv_color_hex(theme().bar_bg)
 
 // ---- Usage screen widgets (single non-splash view) ----
 static lv_obj_t* usage_container;
