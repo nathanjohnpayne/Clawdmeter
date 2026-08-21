@@ -84,6 +84,25 @@ static const char* CODEY_GROUPS[GROUP_COUNT][GROUP_MAX] = {
     { "running", "dizzy", "jumping", nullptr },
 };
 
+static const char* CLAWD_ACTS[4][4] = {
+    { "pointing", "lurking", NULL,       NULL      },   // idle: sparse, sneaky
+    { "waving",   "lurking", "pointing", NULL      },   // normal
+    { "waving",   "dancing", "lurking",  NULL      },   // active
+    { "dancing",  "waving",  "dancing",  "lurking" },   // heavy: can't sit still
+};
+
+// Codey shares none of those names except "waving", so with one table the
+// corner mascot could reach exactly one of its nine animations. No entry is a
+// walk-off trip: that is "lurking", which needs a peeking-in pose Codey's
+// sheet does not have. Every act below fits the 80px slot at its own cell
+// size -- the tallest, jumping and happy, come to 68px.
+static const char* CODEY_ACTS[4][4] = {
+    { "thinking", "idle",     NULL,      NULL     },   // idle: contemplative
+    { "waving",   "happy",    "thinking",NULL     },   // normal
+    { "laptop",   "waving",   "happy",   NULL     },   // active: heads-down
+    { "jumping",  "running",  "dizzy",   "laptop" },   // heavy: frazzled
+};
+
 // The two art sets. Each was authored on its own stage, so the stage size
 // travels with the art rather than being a constant of the engine: Clawd's
 // crops are placed on a 55x37 stage, Codey's on 35x40.
@@ -92,11 +111,12 @@ struct ArtSet {
     uint8_t count;
     uint8_t stage_w, stage_h;
     const char* (*groups)[GROUP_MAX];
+    const char* (*acts)[4];        // corner-mascot acts, by usage-rate group
 };
 
 static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
-    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS },
+    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS },
 };
 
 // Art follows the theme: one mode switch changes palette and mascot together.
@@ -478,12 +498,6 @@ static bool mas_from_loop = false;
 // how long he idles between acts and which acts he does. "lurking" means the
 // walk-off / full-size-lurk / walk-back trip. Acts must fit the 28×21-cell
 // buffer (jumps are too tall for the corner).
-static const char* MAS_ACTS_BY_RATE[4][4] = {
-    { "pointing", "lurking", NULL,       NULL      },   // idle: sparse, sneaky
-    { "waving",   "lurking", "pointing", NULL      },   // normal
-    { "waving",   "dancing", "lurking",  NULL      },   // active
-    { "dancing",  "waving",  "dancing",  "lurking" },   // heavy: can't sit still
-};
 static const uint16_t MAS_STILL_MS_BY_RATE[4] = { 10000, 7000, 5000, 3500 };
 
 static const splash_anim_def_t* anim_by_name(const char *n) {
@@ -619,9 +633,9 @@ void splash_mascot_tick(void) {
         if (g < 0 || g > 3) g = 0;
         if (now - mas_mode_started < MAS_STILL_MS_BY_RATE[g]) return;
         uint8_t count = 0;
-        while (count < 4 && MAS_ACTS_BY_RATE[g][count]) count++;
+        while (count < 4 && art().acts[g][count]) count++;
         if (count == 0) { mas_mode_started = now; return; }
-        const char *act = MAS_ACTS_BY_RATE[g][mas_act_idx++ % count];
+        const char *act = art().acts[g][mas_act_idx++ % count];
         mas_frame = 0;
         mas_frame_started = now;
         mas_from_loop = false;
