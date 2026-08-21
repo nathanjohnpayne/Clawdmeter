@@ -14,6 +14,11 @@ struct UsageData {
     char reset_date[12];     // formatted reset date e.g. "Jul 1" (Enterprise)
     long clock_epoch;        // local wall-clock epoch (s) from daemon; 0 = not provided
     int  clock_fmt;          // 12 or 24 (hour format from daemon); defaults to 24
+    // Not every provider meters both windows -- a Codex Pro plan has a weekly
+    // quota and no 5-hour one. False means "this quota does not exist", which
+    // the UI must render as blank rather than as a convincing 0%.
+    bool has_session;
+    bool has_weekly;
     bool ok;                 // data parse succeeded
     bool valid;              // false until first successful parse
 };

@@ -153,3 +153,40 @@ def test_endpoint_preferred_over_logs(tmp_path):
     with patch("urllib.request.urlopen", return_value=_Resp()):
         snap = _run(CodexCollector(tmp_path).collect())
     assert snap.live and snap.windows[WINDOW_7D].used_percent == 42
+
+
+# --- wire payload for the device -------------------------------------------
+
+def _snap(**windows):
+    from daemon.collectors import UsageSnapshot
+    return UsageSnapshot(provider="codex", plan="pro", windows=windows)
+
+
+def test_absent_window_is_reported_absent_not_zero(monkeypatch):
+    """A Codex Pro plan has no 5h quota. 0% would be a lie about a real limit."""
+    from daemon.collectors import Window
+    import daemon.claude_usage_daemon as mod
+
+    monkeypatch.setattr(mod._CODEX, "collect_blocking",
+                        lambda: _snap(**{WINDOW_7D: Window(83.0, resets_in=6891 * 60)}))
+    p = mod.codex_payload()
+    assert (p["w"], p["wr"], p["has_w"]) == (83, 6891, True)
+    assert p["has_s"] is False and p["sr"] == -1
+
+
+def test_both_windows_map_through(monkeypatch):
+    from daemon.collectors import Window
+    import daemon.claude_usage_daemon as mod
+
+    monkeypatch.setattr(mod._CODEX, "collect_blocking",
+                        lambda: _snap(**{WINDOW_5H: Window(12.0, resets_in=3600),
+                                         WINDOW_7D: Window(40.0, resets_in=86400)}))
+    p = mod.codex_payload()
+    assert (p["s"], p["sr"], p["has_s"]) == (12, 60, True)
+    assert (p["w"], p["wr"], p["has_w"]) == (40, 1440, True)
+
+
+def test_no_codex_yields_no_payload(monkeypatch):
+    import daemon.claude_usage_daemon as mod
+    monkeypatch.setattr(mod._CODEX, "collect_blocking", lambda: None)
+    assert mod.codex_payload() is None

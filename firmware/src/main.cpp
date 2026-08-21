@@ -22,7 +22,11 @@
 #include "hal/imu_hal.h"
 #include "hal/sound_hal.h"
 
-static UsageData usage = {};
+// One slot per provider. The daemon sends every provider it can read in a
+// single payload, so switching mode is instant -- no round trip to the host,
+// and no stale screen while the next poll lands.
+static UsageData usage[THEME_MODE_COUNT] = {};
+static inline UsageData* active_usage(void) { return &usage[theme_mode()]; }
 
 // ---- LVGL draw buffers (partial render mode) ----
 // PSRAM-equipped boards (S3) can comfortably hold larger strips. PSRAM-free
@@ -98,15 +102,8 @@ static void my_touch_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     }
 }
 
-// Parse a JSON line into UsageData.
-static bool parse_json(const char* json, UsageData* out) {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, json);
-    if (err) {
-        Serial.printf("JSON parse error: %s\n", err.c_str());
-        return false;
-    }
-
+// Fill one provider's slot from a JSON object holding the usage fields.
+static void parse_provider(JsonObjectConst doc, UsageData* out) {
     out->session_pct = doc["s"] | 0.0f;
     out->session_reset_mins = doc["sr"] | -1;
     out->weekly_pct = doc["w"] | 0.0f;
@@ -120,8 +117,40 @@ static bool parse_json(const char* json, UsageData* out) {
     strlcpy(out->reset_date, doc["rd"] | "", sizeof(out->reset_date));
     out->clock_epoch = doc["t"] | 0L;
     out->clock_fmt = doc["tf"] | 24;
+    // Default true: a daemon that does not send these meters both windows.
+    out->has_session = doc["has_s"] | true;
+    out->has_weekly  = doc["has_w"] | true;
     out->ok = doc["ok"] | false;
     out->valid = true;
+}
+
+// Parse a JSON line into the per-provider slots.
+//
+// Claude's fields sit at the top level and a second provider, when the daemon
+// can read one, arrives nested under "x". Keeping Claude flat means an older
+// daemon's payload still parses exactly as before -- it simply carries no "x",
+// and Codex mode reports no data rather than the screen breaking.
+static bool parse_json(const char* json) {
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, json);
+    if (err) {
+        Serial.printf("JSON parse error: %s\n", err.c_str());
+        return false;
+    }
+
+    parse_provider(doc.as<JsonObjectConst>(), &usage[THEME_MODE_CLAUDE]);
+
+    JsonObjectConst x = doc["x"];
+    if (!x.isNull()) {
+        parse_provider(x, &usage[THEME_MODE_CODEX]);
+        // Clock and chime are host settings, not provider data, so they are
+        // sent once at the top level and shared by every slot.
+        usage[THEME_MODE_CODEX].chime       = usage[THEME_MODE_CLAUDE].chime;
+        usage[THEME_MODE_CODEX].clock_epoch = usage[THEME_MODE_CLAUDE].clock_epoch;
+        usage[THEME_MODE_CODEX].clock_fmt   = usage[THEME_MODE_CLAUDE].clock_fmt;
+    } else {
+        usage[THEME_MODE_CODEX].valid = false;
+    }
     return true;
 }
 
@@ -355,6 +384,7 @@ void loop() {
                 theme_set_mode(theme_next_mode());
                 splash_reload_art();
                 ui_apply_theme();
+                ui_update(active_usage());   // swap the numbers, not just the paint
                 secondary_consumed = true;
                 Serial.printf("mode: -> %s\n", theme().name);
             } else if (!secondary_now && secondary_was) {
@@ -399,23 +429,23 @@ void loop() {
     check_serial_cmd();
 
     if (ble_has_data()) {
-        if (parse_json(ble_get_data(), &usage)) {
+        if (parse_json(ble_get_data())) {
             int g_before = usage_rate_group();
-            bool session_reset = usage_rate_sample(usage.session_pct);
+            bool session_reset = usage_rate_sample(active_usage()->session_pct);
             int g_after = usage_rate_group();
             // 5-hour session limit refilled → chime so the user knows they can
             // use Claude again (no-op on boards without a buzzer). Gated on the
             // daemon's opt-in `chime` config; the `buzz` serial cmd ignores it.
-            if (session_reset && usage.chime) {
+            if (session_reset && active_usage()->chime) {
                 Serial.println("session reset detected — chime");
                 sound_hal_play_reset();
             }
             if (g_after != g_before) {
                 Serial.printf("usage rate: group %d -> %d (s=%.2f%%)\n",
-                    g_before, g_after, usage.session_pct);
+                    g_before, g_after, active_usage()->session_pct);
                 if (splash_is_active()) splash_pick_for_current_rate();
             }
-            ui_update(&usage);
+            ui_update(active_usage());
             ble_send_ack();
         } else {
             ble_send_nack();

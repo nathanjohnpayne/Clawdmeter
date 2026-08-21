@@ -23,8 +23,12 @@ from pathlib import Path
 # `python /path/to/claude_usage_daemon.py`, putting daemon/ on sys.path) and as
 # `daemon.claude_usage_daemon` from the tests.
 try:
+    from collectors import WINDOW_5H, WINDOW_7D
+    from collectors.codex import CodexCollector
     from collectors.claude import payload_from_headers
 except ImportError:  # pragma: no cover - depends on invocation, both are exercised
+    from daemon.collectors import WINDOW_5H, WINDOW_7D
+    from daemon.collectors.codex import CodexCollector
     from daemon.collectors.claude import payload_from_headers
 
 import httpx
@@ -505,13 +509,63 @@ async def poll_active(selector: PlanSelector = _SELECTOR) -> tuple[dict | None, 
     return payloads[active], False
 
 
+_CODEX = CodexCollector()
+
+
+def codex_payload() -> dict | None:
+    """Codex usage in the device's wire shape, or None when unavailable.
+
+    Plan shapes differ from Anthropic's. A Codex Pro account meters a single
+    weekly window with no 5-hour window at all, so the session slot is left
+    absent (sr = -1) rather than reported as 0% -- an empty panel is honest,
+    a zeroed one is a lie about a quota that does not exist.
+    """
+    snap = _CODEX.collect_blocking()
+    if snap is None:
+        return None
+
+    def slot(label):
+        w = snap.windows.get(label)
+        if w is None:
+            return None, -1
+        mins = -1 if w.resets_in is None else max(0, int(w.resets_in) // 60)
+        return int(round(w.used_percent)), mins
+
+    s_pct, s_reset = slot(WINDOW_5H)
+    w_pct, w_reset = slot(WINDOW_7D)
+    return {
+        "s": s_pct if s_pct is not None else 0,
+        "sr": s_reset,
+        "w": w_pct if w_pct is not None else 0,
+        "wr": w_reset,
+        "st": "allowed",
+        "acct": "pro",
+        "ok": True,
+        # Which panels carry real quotas, so the device can leave the other
+        # blank instead of drawing a convincing 0%.
+        "has_s": s_pct is not None,
+        "has_w": w_pct is not None,
+    }
+
+
 async def poll_active_payload(selector: PlanSelector = _SELECTOR) -> dict | None:
     """The active plan's payload, or None when no dir yields one this cycle.
 
-    Thin wrapper over :func:`poll_active` for callers that don't need the
-    all-dead flag.
+    Claude's fields stay at the top level and Codex, when readable, is nested
+    under "x". The device holds a slot per provider and picks by its current
+    mode, so switching mode on the device is instant rather than waiting on
+    the next poll -- and an older firmware simply ignores the extra key.
     """
     payload, _dead = await poll_active(selector)
+    if payload is None:
+        return None
+    try:
+        codex = await asyncio.to_thread(codex_payload)
+    except Exception as exc:                      # never let a second provider
+        log(f"Codex poll failed: {exc}")          # take down the primary one
+        codex = None
+    if codex:
+        payload["x"] = codex
     return payload
 
 

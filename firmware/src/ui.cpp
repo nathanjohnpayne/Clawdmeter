@@ -678,12 +678,15 @@ void ui_update(const UsageData* data) {
         lv_obj_align_to(lbl_session_pct_sym, lbl_session_pct,
                         LV_ALIGN_OUT_RIGHT_TOP, 4, 12);
     } else {
-        lv_label_set_text_fmt(lbl_session_pct, "%d%%", s_pct);
+        if (data->has_session) lv_label_set_text_fmt(lbl_session_pct, "%d%%", s_pct);
+        // Plain ASCII hyphen, not an em dash: the Styrene faces are subset to
+        // U+0020..U+007E, so anything typographic renders as tofu.
+        else                   lv_label_set_text(lbl_session_pct, "-");
         format_reset_time(data->session_reset_mins, buf, sizeof(buf));
-        lv_label_set_text(lbl_session_reset, buf);
+        lv_label_set_text(lbl_session_reset, data->has_session ? buf : "");
     }
 
-    lv_bar_set_value(bar_session, s_pct, LV_ANIM_ON);
+    lv_bar_set_value(bar_session, data->has_session ? s_pct : 0, LV_ANIM_ON);
     lv_obj_set_style_bg_color(bar_session, pct_color(data->session_pct), LV_PART_INDICATOR);
 
     if (data->enterprise) {
@@ -700,7 +703,8 @@ void ui_update(const UsageData* data) {
         lv_label_set_text(lbl_weekly_reset, buf);
     } else {
         int w_pct = (int)(data->weekly_pct + 0.5f);
-        lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", w_pct);
+        if (data->has_weekly) lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", w_pct);
+        else                  lv_label_set_text(lbl_weekly_pct, "-");
         lv_bar_set_value(bar_weekly, w_pct, LV_ANIM_ON);
         lv_obj_set_style_bg_color(bar_weekly, pct_color(data->weekly_pct), LV_PART_INDICATOR);
         format_reset_time(data->weekly_reset_mins, buf, sizeof(buf));

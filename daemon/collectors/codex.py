@@ -208,7 +208,8 @@ class CodexCollector:
     async def collect(self) -> UsageSnapshot | None:
         # Both readers block -- urllib on the network, and the log fallback on
         # file IO across every rollout file. Off the event loop they go.
-        return await asyncio.to_thread(self._collect_blocking)
+        return await asyncio.to_thread(self.collect_blocking)
 
-    def _collect_blocking(self) -> UsageSnapshot | None:
+    def collect_blocking(self) -> UsageSnapshot | None:
+        """Synchronous variant, for callers already running off the loop."""
         return collect_via_oauth(self.codex_dir) or collect_via_logs(self.codex_dir)
