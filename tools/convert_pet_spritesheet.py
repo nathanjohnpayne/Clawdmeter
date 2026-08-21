@@ -245,7 +245,7 @@ def main():
     for d in defs:
         n = len(d["frames"])
         out.append(f'    {{ "{d["name"]}", "{d["category"]}", {d["w"]}, {d["h"]}, '
-                   f'{d["ox"]}, {d["oy"]}, {n}, 0, {n}, {len(palette) + 1}, '
+                   f'{d["ox"]}, {d["oy"]}, {n}, 0, {n - 1}, {len(palette) + 1}, '
                    f'pet_palette, pet_{d["name"]}_frames, pet_{d["name"]}_holds }},')
     out.append("};")
 

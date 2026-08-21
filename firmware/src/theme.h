@@ -107,3 +107,9 @@ const Theme& theme(void);
 theme_mode_t theme_mode(void);
 void theme_set_mode(theme_mode_t mode);
 theme_mode_t theme_next_mode(void);   // cycles, wrapping at THEME_MODE_COUNT
+
+// Auto-flip: cycle the provider on a timer instead of only on a button press.
+// Persisted next to the mode, since both answer "what is the screen showing"
+// and both should survive a reboot.
+bool theme_autoflip(void);
+void theme_set_autoflip(bool on);

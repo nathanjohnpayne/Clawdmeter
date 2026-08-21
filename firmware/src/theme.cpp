@@ -6,8 +6,10 @@
 // the handful of user-chosen settings that should outlive a reboot.
 #define PREF_NS   "clawdmeter"
 #define PREF_KEY  "mode"
+#define PREF_AUTO "autoflip"
 
 static theme_mode_t active_mode = THEME_MODE_CLAUDE;
+static bool autoflip = false;
 
 void theme_init(void) {
     Preferences prefs;
@@ -16,7 +18,13 @@ void theme_init(void) {
     prefs.end();
 
     if (saved < THEME_MODE_COUNT) active_mode = (theme_mode_t)saved;
-    Serial.printf("Theme init: mode=%s\n", THEMES[active_mode].name);
+
+    prefs.begin(PREF_NS, true);
+    autoflip = prefs.getUChar(PREF_AUTO, 0) != 0;
+    prefs.end();
+
+    Serial.printf("Theme init: mode=%s autoflip=%s\n",
+                  THEMES[active_mode].name, autoflip ? "on" : "off");
 }
 
 const Theme& theme(void) {
@@ -35,6 +43,20 @@ void theme_set_mode(theme_mode_t mode) {
     Preferences prefs;
     prefs.begin(PREF_NS, false);
     prefs.putUChar(PREF_KEY, (uint8_t)active_mode);
+    prefs.end();
+}
+
+bool theme_autoflip(void) {
+    return autoflip;
+}
+
+void theme_set_autoflip(bool on) {
+    if (on == autoflip) return;              // no write when nothing changed
+    autoflip = on;
+
+    Preferences prefs;
+    prefs.begin(PREF_NS, false);
+    prefs.putUChar(PREF_AUTO, autoflip ? 1 : 0);
     prefs.end();
 }
 

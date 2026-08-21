@@ -108,13 +108,13 @@ static const uint16_t pet_happy_holds[6] = {330,90,90,90,90,90};
 
 #define PET_ANIM_COUNT 9
 static const splash_anim_def_t pet_anims[PET_ANIM_COUNT] = {
-    { "idle", "core", 25, 30, 2, 4, 6, 0, 6, 16, pet_palette, pet_idle_frames, pet_idle_holds },
-    { "walking", "core", 25, 30, 2, 4, 8, 0, 8, 16, pet_palette, pet_walking_frames, pet_walking_holds },
-    { "running", "core", 25, 30, 2, 4, 8, 0, 8, 16, pet_palette, pet_running_frames, pet_running_holds },
-    { "waving", "core", 24, 30, 3, 4, 4, 0, 4, 16, pet_palette, pet_waving_frames, pet_waving_holds },
-    { "jumping", "core", 25, 34, 2, 0, 5, 0, 5, 16, pet_palette, pet_jumping_frames, pet_jumping_holds },
-    { "dizzy", "persona", 27, 30, 1, 4, 8, 0, 8, 16, pet_palette, pet_dizzy_frames, pet_dizzy_holds },
-    { "thinking", "persona", 27, 30, 1, 4, 6, 0, 6, 16, pet_palette, pet_thinking_frames, pet_thinking_holds },
-    { "laptop", "persona", 29, 30, 0, 4, 6, 0, 6, 16, pet_palette, pet_laptop_frames, pet_laptop_holds },
-    { "happy", "persona", 27, 34, 1, 0, 6, 0, 6, 16, pet_palette, pet_happy_frames, pet_happy_holds },
+    { "idle", "core", 25, 30, 2, 4, 6, 0, 5, 16, pet_palette, pet_idle_frames, pet_idle_holds },
+    { "walking", "core", 25, 30, 2, 4, 8, 0, 7, 16, pet_palette, pet_walking_frames, pet_walking_holds },
+    { "running", "core", 25, 30, 2, 4, 8, 0, 7, 16, pet_palette, pet_running_frames, pet_running_holds },
+    { "waving", "core", 24, 30, 3, 4, 4, 0, 3, 16, pet_palette, pet_waving_frames, pet_waving_holds },
+    { "jumping", "core", 25, 34, 2, 0, 5, 0, 4, 16, pet_palette, pet_jumping_frames, pet_jumping_holds },
+    { "dizzy", "persona", 27, 30, 1, 4, 8, 0, 7, 16, pet_palette, pet_dizzy_frames, pet_dizzy_holds },
+    { "thinking", "persona", 27, 30, 1, 4, 6, 0, 5, 16, pet_palette, pet_thinking_frames, pet_thinking_holds },
+    { "laptop", "persona", 29, 30, 0, 4, 6, 0, 5, 16, pet_palette, pet_laptop_frames, pet_laptop_holds },
+    { "happy", "persona", 27, 34, 1, 0, 6, 0, 5, 16, pet_palette, pet_happy_frames, pet_happy_holds },
 };

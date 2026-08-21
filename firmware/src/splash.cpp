@@ -103,6 +103,8 @@ static const char* CODEY_ACTS[4][4] = {
     { "jumping",  "running",  "dizzy",   "laptop" },   // heavy: frazzled
 };
 
+enum WalkKind { WALK_NONE, WALK_CRAB, WALK_FRONT, WALK_EVEN };
+
 // The two art sets. Each was authored on its own stage, so the stage size
 // travels with the art rather than being a constant of the engine: Clawd's
 // crops are placed on a 55x37 stage, Codey's on 35x40.
@@ -112,11 +114,13 @@ struct ArtSet {
     uint8_t stage_w, stage_h;
     const char* (*groups)[GROUP_MAX];
     const char* (*acts)[4];        // corner-mascot acts, by usage-rate group
+    WalkKind walk;                 // gait-step schedule for this set's walk cycle
+    const char* peek;              // pose shown large at the far edge mid-trip
 };
 
 static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
-    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS },
+    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking" },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  "waving" },
 };
 
 // Art follows the theme: one mode switch changes palette and mascot together.
@@ -162,7 +166,6 @@ static bool     pending_pick = false;   // rotate requested; honor at completion
 // walking left the frame is mirrored (eyes lead); facing persists standing.
 // DEMO: until the BLE-driven state machine exists, a choreography loops
 // stand → right edge → off-screen left → re-enter home.
-enum WalkKind { WALK_NONE, WALK_CRAB, WALK_FRONT };
 static WalkKind walk_kind = WALK_NONE;
 static bool    walk_active = false;
 static int     walk_x = 0;         // stage x of the frame origin, may be < 0
@@ -184,6 +187,13 @@ static int walk_gait_cells_k(WalkKind kind, uint16_t frame, bool from_loop) {
         if (frame == 2 && !from_loop) return 0;       // first plant
         return (frame == 6) ? 2 : 1;
     }
+    if (kind == WALK_EVEN) {
+        // No measured foot-plant schedule for this art, so travel evenly: one
+        // cell per gait frame. The WALK_CRAB/WALK_FRONT tables above were
+        // derived from Clawd's own frames, and applying them to another
+        // character locks travel to feet that are not there.
+        return from_loop ? 1 : 0;
+    }
     return 0;
 }
 static int walk_gait_cells(uint16_t frame, bool from_loop) {
@@ -198,7 +208,7 @@ static void anim_reset(const splash_anim_def_t *a) {
     walk_active = false;
     walk_kind = WALK_NONE;
     if (strcmp(a->name, "crab walking") == 0) walk_kind = WALK_CRAB;
-    else if (strcmp(a->name, "walking") == 0) walk_kind = WALK_FRONT;
+    else if (strcmp(a->name, "walking") == 0) walk_kind = art().walk;
     else return;
     walk_active = true;
     walk_home_x = STAGE_ANCHOR_X + a->ox;
@@ -589,13 +599,23 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y,
     int max_w, max_h;
     max_frame_cells(&max_w, &max_h);
     const size_t mas_bytes = (size_t)(max_w * cell) * (max_h * cell) * 3;
-    const splash_anim_def_t *lurk = anim_by_name("lurking");
     const BoardCaps& c = board_caps();
     int mind = (c.width < c.height) ? c.width : c.height;
     mas_lurk_cell = mind / SPLASH_GRID;
     if (mas_lurk_cell < 1) mas_lurk_cell = 1;
-    const size_t lurk_bytes = lurk ?
-        (size_t)(lurk->w * mas_lurk_cell) * (lurk->h * mas_lurk_cell) * 3 : 0;
+    // Largest peek pose across every set, for the same reason mas_buf is
+    // sized across every set: allocated once, and the mode can change later.
+    int peek_w = 0, peek_h = 0;
+    for (int m = 0; m < THEME_MODE_COUNT; m++) {
+        const ArtSet &set = ART_SETS[m];
+        for (int i = 0; i < set.count; i++) {
+            if (strcmp(set.anims[i].name, set.peek) != 0) continue;
+            if (set.anims[i].w > peek_w) peek_w = set.anims[i].w;
+            if (set.anims[i].h > peek_h) peek_h = set.anims[i].h;
+        }
+    }
+    const size_t lurk_bytes = peek_w ?
+        (size_t)(peek_w * mas_lurk_cell) * (peek_h * mas_lurk_cell) * 3 : 0;
     mas_buf      = (uint8_t*)heap_caps_malloc(mas_bytes,  MALLOC_CAP_SPIRAM);
     mas_lurk_buf = lurk_bytes ? (uint8_t*)heap_caps_malloc(lurk_bytes, MALLOC_CAP_SPIRAM) : NULL;
     if (!mas_buf) return NULL;
@@ -639,11 +659,11 @@ void splash_mascot_tick(void) {
         mas_frame = 0;
         mas_frame_started = now;
         mas_from_loop = false;
-        // "lurking" is the enriched trip: walk off, lurk at full size, walk
-        // back. "trip" is the same journey without the lurk, for a set with no
-        // peeking-in pose -- it walks off and comes straight back.
-        const bool is_trip = strcmp(act, "trip") == 0;
-        if ((strcmp(act, "lurking") == 0 && mas_lurk_img) || is_trip) {
+        // The trip: walk off stage left, appear large at the right edge, then
+        // walk the whole width back to the corner. Each art set names its own
+        // far-edge pose -- Clawd has a purpose-drawn "lurking", Codey borrows
+        // "waving", which reads the same at that size.
+        if (strcmp(act, "trip") == 0 || strcmp(act, "lurking") == 0) {
             mas_anim = anim_by_name("walking");
             if (!mas_anim) { mas_mode_started = now; return; }
             mas_face = -1;
@@ -689,7 +709,7 @@ void splash_mascot_tick(void) {
         mas_frame >= a->loop_start && mas_frame <= a->loop_end;
 
     if (walking_mode && mas_from_loop) {
-        const int step = walk_gait_cells_k(WALK_FRONT, mas_frame, from_loop) * mas_cell;
+        const int step = walk_gait_cells_k(art().walk, mas_frame, from_loop) * mas_cell;
         // Walk-off always exits left; walk-in heads toward the slot from
         // whichever side he's on (right, after the lurk trip).
         const int dir = (mas_mode == MAS_WALK_OFF) ? -1
@@ -698,10 +718,10 @@ void splash_mascot_tick(void) {
         mas_x += dir * step;
         if (mas_mode == MAS_WALK_OFF && mas_x <= -a->w * mas_cell) {
             // Fully off: hide the corner sprite, run the full-size lurk.
-            const splash_anim_def_t *lurk = anim_by_name("lurking");
+            const splash_anim_def_t *lurk = anim_by_name(art().peek);
             if (!lurk || !mas_lurk_img || !mas_lurk_buf) {
-                // No lurk pose for this art set: turn round off-screen and
-                // walk back in from the same side, rather than vanishing.
+                // No peek pose at all: turn round off-screen and walk back
+                // in from the same side, rather than vanishing.
                 mas_frame = 0;
                 mas_from_loop = false;
                 mas_face = +1;

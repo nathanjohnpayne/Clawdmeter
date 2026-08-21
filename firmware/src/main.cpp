@@ -167,6 +167,26 @@ static bool parse_json(const char* json) {
     return true;
 }
 
+// Hold on SECONDARY that means "change how flipping works" rather than "flip
+// now". Long enough not to trip on a firm tap, short enough not to feel stuck.
+#define MODE_HOLD_MS 600
+
+// Auto-flip cadence. Slow enough to read a screen before it changes, fast
+// enough that both providers stay current at a glance.
+#define AUTOFLIP_INTERVAL_MS 120000
+static uint32_t autoflip_last_ms = 0;
+
+static void cycle_provider(void) {
+    theme_set_mode(theme_next_mode());
+    splash_reload_art();
+    ui_apply_theme();
+    ui_update(active_usage());
+    // A manual flip restarts the clock, so the next automatic one is a full
+    // interval away rather than possibly landing a second later.
+    autoflip_last_ms = millis();
+    Serial.printf("mode: -> %s\n", theme().name);
+}
+
 // ---- Serial command buffer ----
 #define CMD_BUF_SIZE 64
 static char cmd_buf[CMD_BUF_SIZE];
@@ -223,12 +243,13 @@ static void check_serial_cmd() {
             // 30-second round trip per look and cannot reach the mode at all.
             else if (strcmp(cmd_buf, "usage") == 0)  ui_show_screen(SCREEN_USAGE);
             else if (strcmp(cmd_buf, "splash") == 0) ui_show_screen(SCREEN_SPLASH);
-            else if (strcmp(cmd_buf, "mode") == 0) {
-                theme_set_mode(theme_next_mode());
-                splash_reload_art();
-                ui_apply_theme();
-                ui_update(active_usage());
-                Serial.printf("mode: -> %s\n", theme().name);
+            else if (strcmp(cmd_buf, "mode") == 0) cycle_provider();
+            else if (strcmp(cmd_buf, "auto") == 0) {
+                const bool on = !theme_autoflip();
+                theme_set_autoflip(on);
+                autoflip_last_ms = millis();
+                ui_flash_hint(on ? "Auto 2m" : "Auto off", 2000);
+                Serial.printf("autoflip: %s\n", on ? "on" : "off");
             }
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
@@ -342,10 +363,6 @@ static void pair_tick(void) {
     }
 }
 
-// Hold on SECONDARY that means "switch provider" rather than "send Shift+Tab".
-// Long enough not to trip on a firm tap, short enough not to feel stuck.
-#define MODE_HOLD_MS 600
-
 void loop() {
     idle_tick();
     lv_timer_handler();
@@ -387,12 +404,15 @@ void loop() {
         }
 
         if (board_caps().button_count >= 2) {
-            // SECONDARY carries two actions, split by how long it is held.
-            // The HID keystroke therefore fires on RELEASE, not on press:
-            // until the button comes up we do not know which action was
-            // meant. Shift+Tab is a discrete keystroke, so deferring it is
-            // invisible -- unlike PRIMARY, where Space is held-to-talk and
-            // the press edge is load-bearing.
+            // SECONDARY carries two actions, split by how long it is held:
+            // a tap flips the provider now, a hold turns auto-flip on or off.
+            // This retires the HID Shift+Tab that used to live on the tap --
+            // there is no third button on any supported board to move it to.
+            //
+            // The hold fires on the threshold rather than on release, so the
+            // gesture confirms itself under your thumb; the hint exists
+            // because turning auto-flip ON has no other visible effect for
+            // two minutes.
             static bool     secondary_was = false;
             static bool     secondary_wake_swallowed = false;
             static uint32_t secondary_down_ms = 0;
@@ -406,22 +426,25 @@ void loop() {
             } else if (secondary_now && !secondary_consumed &&
                        !secondary_wake_swallowed &&
                        millis() - secondary_down_ms >= MODE_HOLD_MS) {
-                // Fire on the threshold rather than on release, so the mode
-                // flips under your thumb and you can let go once you see it.
-                theme_set_mode(theme_next_mode());
-                splash_reload_art();
-                ui_apply_theme();
-                ui_update(active_usage());   // swap the numbers, not just the paint
+                const bool on = !theme_autoflip();
+                theme_set_autoflip(on);
+                autoflip_last_ms = millis();
+                ui_flash_hint(on ? "Auto 2m" : "Auto off", 2000);
                 secondary_consumed = true;
-                Serial.printf("mode: -> %s\n", theme().name);
+                Serial.printf("autoflip: %s\n", on ? "on" : "off");
             } else if (!secondary_now && secondary_was) {
                 if (secondary_wake_swallowed)   secondary_wake_swallowed = false;
-                else if (!secondary_consumed) {
-                    ble_keyboard_press(0x2B, 0x02);   // HID Tab + LEFT_SHIFT
-                    ble_keyboard_release();
-                }
+                else if (!secondary_consumed)   cycle_provider();
             }
             secondary_was = secondary_now;
+        }
+
+        // Auto-flip. Runs regardless of button count: a one-button board can
+        // still be put into auto-flip over serial, and this is its only way to
+        // reach the second provider at all.
+        if (theme_autoflip() &&
+            millis() - autoflip_last_ms >= AUTOFLIP_INTERVAL_MS) {
+            cycle_provider();
         }
 
         if (power_hal_pwr_pressed()) {

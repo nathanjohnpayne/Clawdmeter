@@ -253,6 +253,8 @@ static lv_obj_t* lbl_session_pct_sym = nullptr;  // "%" in smaller font
 static lv_obj_t* lbl_spending_desc = nullptr;     // "of your monthly budget"
 static lv_obj_t* lbl_spending_status = nullptr;   // "Under pace" / "On pace" / "Over pace"
 static lv_obj_t* lbl_anim;      // status line: connection state + whimsical idle
+static char      hint_text[24] = "";   // transient override of the status line
+static uint32_t  hint_until_ms = 0;
 
 // ---- Battery indicator (shared, on top) ----
 static lv_obj_t* battery_img;
@@ -845,6 +847,11 @@ void ui_tick_anim(void) {
         }
     }
 
+    // A hint owns the line until it lapses; the ticker keeps running
+    // underneath so the spinner does not visibly jump when it resumes.
+    if (hint_until_ms && (int32_t)(hint_until_ms - now) > 0) return;
+    hint_until_ms = 0;
+
     if (now - anim_last_ms < spinner_ms[anim_spinner_idx]) return;
     anim_last_ms = now;
     anim_phase = (anim_phase + 1) % SPINNER_PHASES;
@@ -932,6 +939,13 @@ void ui_update_ble_status(ble_state_t state, const char* name, const char* mac) 
     if (s_ble_connected && !was_connected) connected_at_ms = lv_tick_get();
     // pair / idle / usage — picked from connection + data freshness.
     update_view_state();
+}
+
+void ui_flash_hint(const char* text, uint32_t ms) {
+    if (!lbl_anim) return;
+    strlcpy(hint_text, text, sizeof(hint_text));
+    hint_until_ms = millis() + ms;
+    lv_label_set_text(lbl_anim, hint_text);
 }
 
 void ui_apply_theme(void) {
