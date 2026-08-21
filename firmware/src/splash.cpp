@@ -120,7 +120,7 @@ struct ArtSet {
 
 static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
     { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking" },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  nullptr },
+    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  "waving" },
 };
 
 // Art follows the theme: one mode switch changes palette and mascot together.
@@ -502,6 +502,7 @@ static uint32_t mas_mode_started = 0;
 static int  mas_x = 0;                 // widget x, px (may be off-screen)
 static int  mas_face = +1;
 static uint8_t mas_act_idx = 0;
+static uint32_t mas_peek_started = 0;
 static bool mas_from_loop = false;
 
 // The corner mascot mirrors the splash's excitement: per usage-rate group,
@@ -549,6 +550,35 @@ static void mas_render(const splash_anim_def_t *a, uint16_t frame, bool mirror,
 }
 
 // Largest cell at which the active set's still pose fits the slot.
+// Clawd's "lurking" is a cropped lean-in pose, 13x17 cells, and at the base
+// cell it lands 104x136px with its feet at 4/5 screen height. Codey's borrowed
+// "waving" is a full 24x30 figure, so the SAME cell size rendered it 192x240 --
+// nearly half the panel, starting mid-screen. Match the on-screen height
+// instead of the cell size, and anchor both to the same bottom line, so any
+// set's peek reads at the size Clawd's was drawn for.
+#define PEEK_TARGET_CELLS 17
+
+// Minimum time the peek stays on screen. Clawd's "lurking" is 24 authored
+// frames and dwells naturally; Codey's borrowed "waving" is 4 frames totalling
+// 600ms, which flashes a large sprite on and off before it reads as anything.
+// A short peek loops until this elapses.
+#define PEEK_MIN_MS 2600
+
+static int mas_peek_cell(const splash_anim_def_t *a) {
+    const BoardCaps& c = board_caps();
+    const int mind = (c.width < c.height) ? c.width : c.height;
+    const int base = mind / SPLASH_GRID;
+    if (!a || a->h <= 0) return base < 1 ? 1 : base;
+    int cell = (PEEK_TARGET_CELLS * base) / a->h;
+    return cell < 1 ? 1 : cell;
+}
+
+static int mas_peek_feet_y(void) {
+    const BoardCaps& c = board_caps();
+    const int mind = (c.width < c.height) ? c.width : c.height;
+    return mind * 4 / 5;          // where Clawd's stage-derived feet already sit
+}
+
 static int mas_fit_cell(void) {
     const splash_anim_def_t *still = anim_by_name("walking");
     if (!still || still->h <= 0) return mas_max_cell;
@@ -605,17 +635,18 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y,
     if (mas_lurk_cell < 1) mas_lurk_cell = 1;
     // Largest peek pose across every set, for the same reason mas_buf is
     // sized across every set: allocated once, and the mode can change later.
-    int peek_w = 0, peek_h = 0;
+    size_t lurk_bytes = 0;
     for (int m = 0; m < THEME_MODE_COUNT; m++) {
         const ArtSet &set = ART_SETS[m];
+        if (!set.peek) continue;
         for (int i = 0; i < set.count; i++) {
-            if (!set.peek || strcmp(set.anims[i].name, set.peek) != 0) continue;
-            if (set.anims[i].w > peek_w) peek_w = set.anims[i].w;
-            if (set.anims[i].h > peek_h) peek_h = set.anims[i].h;
+            if (strcmp(set.anims[i].name, set.peek) != 0) continue;
+            const int pc = mas_peek_cell(&set.anims[i]);
+            const size_t need = (size_t)(set.anims[i].w * pc) *
+                                (set.anims[i].h * pc) * 3;
+            if (need > lurk_bytes) lurk_bytes = need;
         }
     }
-    const size_t lurk_bytes = peek_w ?
-        (size_t)(peek_w * mas_lurk_cell) * (peek_h * mas_lurk_cell) * 3 : 0;
     mas_buf      = (uint8_t*)heap_caps_malloc(mas_bytes,  MALLOC_CAP_SPIRAM);
     mas_lurk_buf = lurk_bytes ? (uint8_t*)heap_caps_malloc(lurk_bytes, MALLOC_CAP_SPIRAM) : NULL;
     if (!mas_buf) return NULL;
@@ -689,6 +720,14 @@ void splash_mascot_tick(void) {
 
     if (next >= a->frame_count) {                   // act / lurk finished
         if (mas_mode == MAS_LURK) {
+            if (now - mas_peek_started < PEEK_MIN_MS) {
+                mas_frame = 0;                  // replay until the dwell is up
+                mas_render(a, 0, true, &mas_lurk_dsc, mas_lurk_buf,
+                           mas_lurk_img, mas_lurk_cell,
+                           mas_screen_w - a->w * mas_lurk_cell,
+                           mas_peek_feet_y());
+                return;
+            }
             lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
             mas_anim = anim_by_name("walking");
             mas_frame = 0;
@@ -735,14 +774,16 @@ void splash_mascot_tick(void) {
                 mas_anim = lurk;
                 mas_frame = 0;
                 mas_mode = MAS_LURK;
+                mas_peek_started = now;
                 lv_obj_clear_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_move_foreground(mas_lurk_img);
                 // He left stage left, so he peeks in from the RIGHT edge —
                 // mirrored at render time (the art is authored left-edge).
+                mas_lurk_cell = mas_peek_cell(lurk);
                 mas_render(lurk, 0, true, &mas_lurk_dsc, mas_lurk_buf,
                            mas_lurk_img, mas_lurk_cell,
                            mas_screen_w - lurk->w * mas_lurk_cell,
-                           (STAGE_ANCHOR_Y + lurk->oy + lurk->h) * mas_lurk_cell);
+                           mas_peek_feet_y());
             } else {
                 mas_mode = MAS_WALK_IN;             // no lurk asset: turn back
                 mas_face = +1;
