@@ -591,7 +591,10 @@ void ui_init(void) {
         const int top   = L.logo_y + (slot - art_h) / 2;
 #ifdef BOARD_HAS_PSRAM
         // Animated: idles, does acts, and takes walk-off/lurk trips.
-        splash_mascot_create(scr, L.margin, top + art_h, L.small_icons ? 2 : 3);
+        // Cell is a ceiling, not a fixed size: Codey stands about twice as
+        // tall in art cells as Clawd, so the slot decides what actually fits.
+        const int mas_cell = splash_mascot_fit_cell(slot, L.small_icons ? 2 : 3);
+        splash_mascot_create(scr, L.margin, top + art_h, mas_cell);
 #else
         logo_img = lv_image_create(scr);
         lv_image_set_src(logo_img, &logo_dsc);

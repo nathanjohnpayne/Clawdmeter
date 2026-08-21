@@ -534,13 +534,41 @@ static void mas_show_still(void) {
                    mas_cell, mas_x, mas_feet_y);
 }
 
+// Largest frame across EVERY art set, not just the active one. The mascot
+// buffer is allocated once, at create time, but the mode can switch at any
+// point afterwards -- and the sets are not close in size: Clawd's biggest act
+// bbox is 28x21 cells while Codey's laptop/happy frames reach 35x40, 2.4x the
+// area. Sizing to the active set overflows mas_buf on the first mode switch.
+static void max_frame_cells(int *out_w, int *out_h) {
+    int mw = 0, mh = 0;
+    for (int m = 0; m < THEME_MODE_COUNT; m++) {
+        const ArtSet &set = ART_SETS[m];
+        for (int i = 0; i < set.count; i++) {
+            if (set.anims[i].w > mw) mw = set.anims[i].w;
+            if (set.anims[i].h > mh) mh = set.anims[i].h;
+        }
+    }
+    *out_w = mw;
+    *out_h = mh;
+}
+
+int splash_mascot_fit_cell(int slot_px, int max_cell) {
+    const splash_anim_def_t *still = anim_by_name("walking");   // frame 0 == still pose
+    if (!still || still->h <= 0) return max_cell;
+    int cell = slot_px / still->h;
+    if (cell > max_cell) cell = max_cell;
+    if (cell < 1) cell = 1;
+    return cell;
+}
+
 lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cell) {
     mas_cell = cell;
     mas_slot_x = slot_x;
     mas_feet_y = feet_y;
     mas_screen_w = board_caps().width;
-    // Buffer for the largest act bbox (pointing, 28×21 cells).
-    const size_t mas_bytes = (size_t)(28 * cell) * (21 * cell) * 3;
+    int max_w, max_h;
+    max_frame_cells(&max_w, &max_h);
+    const size_t mas_bytes = (size_t)(max_w * cell) * (max_h * cell) * 3;
     const splash_anim_def_t *lurk = anim_by_name("lurking");
     const BoardCaps& c = board_caps();
     int mind = (c.width < c.height) ? c.width : c.height;

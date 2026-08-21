@@ -44,6 +44,12 @@ void splash_mini_tick(void);
 // Corner mascot (usage screen, PSRAM boards): the still Clawd idles in the
 // logo slot, does occasional acts, and takes walk-off/lurk/walk-back trips.
 // feet_y = px of the art's ground line; cell = px per art cell in the corner.
+// Largest cell size (px per art cell), up to `max_cell`, at which the corner
+// mascot's still pose fits inside a `slot_px`-tall slot. The two art sets are
+// drawn at very different heights -- Clawd's still pose is ~16 cells, Codey's
+// ~30 -- so a fixed cell that suits one overflows the slot with the other.
+int splash_mascot_fit_cell(int slot_px, int max_cell);
+
 lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cell);
 void splash_mascot_tick(void);
 void splash_mascot_set_visible(bool v);
