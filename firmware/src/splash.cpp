@@ -97,9 +97,9 @@ static const char* CLAWD_ACTS[4][4] = {
 // sheet does not have. Every act below fits the 80px slot at its own cell
 // size -- the tallest, jumping and happy, come to 68px.
 static const char* CODEY_ACTS[4][4] = {
-    { "thinking", "idle",     NULL,      NULL     },   // idle: contemplative
-    { "waving",   "happy",    "thinking",NULL     },   // normal
-    { "laptop",   "waving",   "happy",   NULL     },   // active: heads-down
+    { "thinking", "trip",     "idle",    NULL     },   // idle: contemplative
+    { "waving",   "trip",     "happy",   "thinking" }, // normal
+    { "laptop",   "waving",   "trip",    "happy"  },   // active: heads-down
     { "jumping",  "running",  "dizzy",   "laptop" },   // heavy: frazzled
 };
 
@@ -639,8 +639,13 @@ void splash_mascot_tick(void) {
         mas_frame = 0;
         mas_frame_started = now;
         mas_from_loop = false;
-        if (strcmp(act, "lurking") == 0 && mas_lurk_img) {   // the lurk trip
+        // "lurking" is the enriched trip: walk off, lurk at full size, walk
+        // back. "trip" is the same journey without the lurk, for a set with no
+        // peeking-in pose -- it walks off and comes straight back.
+        const bool is_trip = strcmp(act, "trip") == 0;
+        if ((strcmp(act, "lurking") == 0 && mas_lurk_img) || is_trip) {
             mas_anim = anim_by_name("walking");
+            if (!mas_anim) { mas_mode_started = now; return; }
             mas_face = -1;
             mas_mode = MAS_WALK_OFF;
         } else {
@@ -693,9 +698,19 @@ void splash_mascot_tick(void) {
         mas_x += dir * step;
         if (mas_mode == MAS_WALK_OFF && mas_x <= -a->w * mas_cell) {
             // Fully off: hide the corner sprite, run the full-size lurk.
-            lv_obj_add_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
             const splash_anim_def_t *lurk = anim_by_name("lurking");
-            if (lurk && mas_lurk_img && mas_lurk_buf) {
+            if (!lurk || !mas_lurk_img || !mas_lurk_buf) {
+                // No lurk pose for this art set: turn round off-screen and
+                // walk back in from the same side, rather than vanishing.
+                mas_frame = 0;
+                mas_from_loop = false;
+                mas_face = +1;
+                mas_x = -a->w * mas_cell;
+                mas_mode = MAS_WALK_IN;
+                return;
+            }
+            lv_obj_add_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+            if (true) {
                 mas_anim = lurk;
                 mas_frame = 0;
                 mas_mode = MAS_LURK;
