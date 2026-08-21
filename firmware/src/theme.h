@@ -29,6 +29,12 @@ struct Theme {
     uint32_t red;
     uint32_t bar_bg;    // unfilled bar track
     const char* name;   // shown on the usage screen
+
+    // Claude's identity is a serif display face over sans body copy; ChatGPT's
+    // is sans throughout. Set here rather than duplicating every breakpoint's
+    // font table -- ui.cpp swaps the serif slots for their nearest sans size
+    // after the layout has picked sizes.
+    bool sans_only;
 };
 
 // The palettes differ in temperature as much as in hue, which is what makes
@@ -47,6 +53,7 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
         .red    = 0xc0392b,
         .bar_bg = 0x2a2a28,
         .name   = "Claude",
+        .sans_only = false,
     },
     // Codex — ChatGPT-inspired: neutral greys, signature green.
     {
@@ -60,6 +67,7 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
         .red    = 0xef4146,
         .bar_bg = 0x2a2a2a,
         .name   = "Codex",
+        .sans_only = true,
     },
 };
 

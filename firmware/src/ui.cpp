@@ -6,6 +6,7 @@
 #include "clawd_still.h"
 #include "icons.h"
 #include "hal/board_caps.h"
+#include "theme.h"   // palette + font family, needed by compute_layout
 
 // Custom fonts (scaled for 314 PPI, ~1.9x from original 165 PPI)
 LV_FONT_DECLARE(font_tiempos_56);
@@ -72,6 +73,15 @@ static Layout L = {};
 // existing boards happen to land on the two breakpoints below; new ports
 // inherit the closer one — visually OK, may need a polish pass for
 // pixel-perfect alignment but never blocks the port from booting.
+// Nearest sans at a comparable optical size. Styrene runs one nominal step
+// smaller than Tiempos because a grotesque's larger x-height reads as the same
+// size on the panel; matching the nominal number would look oversized.
+static const lv_font_t* sans_for(const lv_font_t* serif) {
+    if (serif == &font_tiempos_56) return &font_styrene_48;
+    if (serif == &font_tiempos_34) return &font_styrene_28;
+    return serif;
+}
+
 static void compute_layout(const BoardCaps& c) {
     L.scr_w = c.width;
     L.scr_h = c.height;
@@ -176,10 +186,18 @@ static void compute_layout(const BoardCaps& c) {
     }
 
     L.content_w = L.scr_w - 2 * L.margin;
+
+    // Sans-only themes: the layout above picked sizes, this picks the family.
+    // Only the three display slots are serif; everything else is already
+    // Styrene or Mono.
+    if (theme().sans_only) {
+        L.title_font    = sans_for(L.title_font);
+        L.ent_pct_font  = sans_for(L.ent_pct_font);
+        L.bt_title_font = sans_for(L.bt_title_font);
+    }
 }
 
-// Anthropic brand palette — design tokens live in theme.h
-#include "theme.h"
+// Design tokens live in theme.h (included above, before compute_layout).
 // Resolved against the active provider palette at each use, so a mode switch
 // only needs a restyle pass rather than a rebuild.
 #define COL_BG        lv_color_hex(theme().bg)
@@ -812,6 +830,11 @@ void ui_update_ble_status(ble_state_t state, const char* name, const char* mac) 
 }
 
 void ui_apply_theme(void) {
+    // Fonts are part of the theme, and compute_layout() resolves them, so the
+    // layout has to be recomputed before anything is restyled.
+    compute_layout(board_caps());
+    if (lbl_title) lv_obj_set_style_text_font(lbl_title, L.title_font, 0);
+
     lv_obj_set_style_bg_color(lv_screen_active(), COL_BG, 0);
     if (splash_get_root()) lv_obj_set_style_bg_color(splash_get_root(), COL_BG, 0);
 
