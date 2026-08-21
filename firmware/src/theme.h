@@ -35,6 +35,18 @@ struct Theme {
     // font table -- ui.cpp swaps the serif slots for their nearest sans size
     // after the layout has picked sizes.
     bool sans_only;
+
+    // Fill for a progress bar below the warning threshold. Claude's identity
+    // reads a healthy bar as green; the Codex language treats usage as neutral
+    // information until it is actionable, so its normal fill is off-white and
+    // only the warning/critical states carry color.
+    uint32_t progress;
+
+    // Quiet status line: a static dot and plain state words, instead of the
+    // ping-pong spinner glyphs and rotating gerunds. Those are Claude Code's
+    // own idiom -- showing them on a Codex screen puts Anthropic's product
+    // voice on the wrong provider.
+    bool quiet_status;
 };
 
 // The palettes differ in temperature as much as in hue, which is what makes
@@ -54,6 +66,8 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
         .bar_bg = 0x2a2a28,
         .name   = "Claude",
         .sans_only = false,
+        .progress = 0x788c5d,        // healthy = green, as it always has been
+        .quiet_status = false,
     },
     // Codex — ChatGPT-inspired: neutral greys, signature green.
     {
@@ -68,6 +82,8 @@ static const Theme THEMES[THEME_MODE_COUNT] = {
         .bar_bg = 0x2a2a2a,
         .name   = "Codex",
         .sans_only = true,
+        .progress = 0xe7e7e7,        // neutral until actionable
+        .quiet_status = true,
     },
 };
 

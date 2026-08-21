@@ -209,6 +209,7 @@ static void compute_layout(const BoardCaps& c) {
 #define COL_AMBER     lv_color_hex(theme().amber)
 #define COL_RED       lv_color_hex(theme().red)
 #define COL_BAR_BG    lv_color_hex(theme().bar_bg)
+#define COL_PROGRESS  lv_color_hex(theme().progress)
 
 // ---- Usage screen widgets (single non-splash view) ----
 static lv_obj_t* usage_container;
@@ -313,10 +314,15 @@ static const char* const anim_messages[] = {
 };
 #define ANIM_MSG_COUNT (sizeof(anim_messages) / sizeof(anim_messages[0]))
 
+// A bar goes amber only once the quota is genuinely worth acting on. The old
+// 50%% cut fired halfway through a session, which trained you to ignore it.
+#define WARN_PCT 75.0f
+#define CRIT_PCT 90.0f
+
 static lv_color_t pct_color(float pct) {
-    if (pct >= 80.0f) return COL_RED;
-    if (pct >= 50.0f) return COL_AMBER;
-    return COL_GREEN;
+    if (pct >= CRIT_PCT) return COL_RED;
+    if (pct >= WARN_PCT) return COL_AMBER;
+    return COL_PROGRESS;
 }
 
 static void format_reset_time(int mins, char* buf, size_t len) {
@@ -556,7 +562,11 @@ static void init_usage_screen(lv_obj_t* scr) {
     lbl_anim = lv_label_create(usage_container);
     lv_label_set_text(lbl_anim, "");
     lv_obj_set_style_text_font(lbl_anim, L.anim_font, 0);
-    lv_obj_set_style_text_color(lbl_anim, COL_ACCENT, 0);
+    // A healthy link should be discoverable, not attention-seeking. The
+    // whimsical line is part of Claude's character so it keeps the accent;
+    // a quiet theme drops the status to secondary text.
+    lv_obj_set_style_text_color(lbl_anim,
+                                theme().quiet_status ? COL_DIM : COL_ACCENT, 0);
     lv_obj_align(lbl_anim, LV_ALIGN_BOTTOM_MID, 0, L.anim_y);
 }
 
@@ -681,7 +691,7 @@ void ui_update(const UsageData* data) {
         lv_label_set_text(lbl_weekly_label, "Period");
         lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", data->time_pct);
         lv_bar_set_value(bar_weekly, data->time_pct, LV_ANIM_ON);
-        lv_color_t bar_pace = (data->session_pct <= (float)data->time_pct) ? COL_GREEN :
+        lv_color_t bar_pace = (data->session_pct <= (float)data->time_pct) ? COL_PROGRESS :
                               (data->session_pct <= (float)data->time_pct + 15.0f) ? COL_AMBER :
                               COL_RED;
         lv_obj_set_style_bg_color(bar_weekly, bar_pace, LV_PART_INDICATOR);
@@ -769,13 +779,30 @@ void ui_tick_anim(void) {
     } else if (now - connected_at_ms < 5000) {
         text = "Connected";
     } else {
-        text = anim_messages[anim_msg_idx];
+        // A settled, connected link is a steady state, so a quiet theme just
+        // says so. The rotating gerunds stay with the theme they belong to.
+        text = theme().quiet_status ? "Connected" : anim_messages[anim_msg_idx];
     }
 
-    // All states share the whimsical style: "<glyph> <Title-case word>…"
     static char buf[80];
-    snprintf(buf, sizeof(buf), "%s %s\xE2\x80\xA6",
-             spinner_frames[anim_spinner_idx], text);
+    if (theme().quiet_status) {
+        // Static dot, no trailing ellipsis: nothing is in progress once the
+        // link is up, and an animated "…" says otherwise. Only the
+        // not-yet-connected states keep the spinner, where it is truthful.
+        //
+        // The dot is spinner_frames[0] (U+00B7), not U+25CF: the fonts are
+        // subset to seven non-ASCII glyphs -- the five spinner asterisks, the
+        // ellipsis and this -- so any other circle renders as tofu. It also
+        // happens to be the right glyph conceptually, since the resting state
+        // is the spinner's own first frame.
+        const char* glyph = s_ble_connected ? spinner_frames[0]
+                                            : spinner_frames[anim_spinner_idx];
+        snprintf(buf, sizeof(buf), "%s %s", glyph, text);
+    } else {
+        // "<glyph> <Title-case word>…"
+        snprintf(buf, sizeof(buf), "%s %s\xE2\x80\xA6",
+                 spinner_frames[anim_spinner_idx], text);
+    }
     lv_label_set_text(lbl_anim, buf);
 }
 
@@ -866,7 +893,8 @@ void ui_apply_theme(void) {
     for (unsigned i = 0; i < sizeof(dim) / sizeof(dim[0]); i++)
         if (dim[i]) lv_obj_set_style_text_color(dim[i], COL_DIM, 0);
 
-    if (lbl_anim) lv_obj_set_style_text_color(lbl_anim, COL_ACCENT, 0);
+    if (lbl_anim) lv_obj_set_style_text_color(lbl_anim,
+            theme().quiet_status ? COL_DIM : COL_ACCENT, 0);
 
     // pair_group and idle_group are built lazily and are only on screen when
     // disconnected or asleep; they pick the new palette up when next built.
