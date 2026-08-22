@@ -262,7 +262,25 @@ path needs `pngjs`, which is not vendored, plus a `sips` pre-step.
 Every frame is cropped against **one global content bounding box**, not
 per-frame boxes — otherwise the character hops when switching animations.
 
-Swapping the sheet for a commissioned one at the same dimensions is a drop-in
+### Multiple pets
+
+All eight sheets in the pack convert in one pass into a single
+`pet_animations.h` carrying a `PETS[]` table, and the Codex art set is
+assembled from the selected entry at runtime rather than duplicated eight
+times — the groups, acts, gait and lack of a peek pose are properties of "a
+ChatGPT pet", not of any one of them. Only the table, stage and name differ.
+
+```bash
+python3 tools/convert_pet_spritesheet.py research/codex-pets/*-spritesheet.webp --stage-h 34
+```
+
+Converted from `original/`, not the pack's `pixel-perfect-480/`: those are
+exact 2× nearest-neighbour upscales with padding, so they carry no extra
+information and the converter downsamples anyway.
+
+Cost on the 2.16: flash 65.9% → 74.7% for seven extra pets.
+
+Swapping a sheet for a commissioned one at the same dimensions is a drop-in
 change; the converter reads the grid, not the character. See
 [`research/codex-pets/CLAUDE.md`](../research/codex-pets/CLAUDE.md) for
 provenance and the licensing position.
@@ -271,14 +289,22 @@ provenance and the licensing position.
 
 ## 6. Controls
 
+**Left button (PRIMARY).** Tap switches the pet — Codex mode only, since the
+Claude side has one mascot and a tap there is a deliberate no-op. Hold freezes
+every mascot: the splash animation, the corner acts and the trips all hold
+their current frame, with a `Pets held` / `Pets live` hint. Persisted, since
+the point of quieting a desk display is that it stays quiet.
+
 **Right button (SECONDARY).** Tap flips the provider now; hold cycles the
 auto-flip cadence `30s → 1m → 2m → 3m → off`, stepping again while held so one
 hold reaches any cadence. The hold fires on the threshold, not on release, so
 the gesture confirms itself under your thumb, and flashes its new label on the
 status line — enabling auto-flip has no other visible effect for minutes.
 
-This **retires HID Shift+Tab**. No supported board has a third button to move
-it to.
+Between them these **retire both HID bindings** — Space (voice-mode
+push-to-talk) and Shift+Tab. No supported board has a third button, and the
+buttons are worth more driving the screen in front of you than sending
+shortcuts to a terminal.
 
 `MODE_HOLD_MS` 600, `SECONDARY_DEBOUNCE_MS` 30, `MIN_FLIP_GAP_MS` 250. The
 last is a guard, not a root-cause fix: two flips once landed in the same

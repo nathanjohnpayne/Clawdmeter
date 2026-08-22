@@ -18,6 +18,18 @@ void splash_next(void);
 // current animation index are stale the moment the mode changes.
 void splash_reload_art(void);
 
+// Which pet the Codex side shows. Persisted, so the choice survives a reboot
+// the way the provider mode does. Cycling rebinds the art set and restarts
+// whatever was playing.
+void splash_pet_next(void);
+const char* splash_pet_name(void);
+
+// Freeze every mascot: the splash animation, the corner mascot's acts and its
+// trips all hold their current frame. Persisted, since the point of quieting
+// a desk display is that it stays quiet.
+void splash_set_paused(bool paused);
+bool splash_paused(void);
+
 // Show/hide the splash container.
 void splash_show(void);
 void splash_hide(void);

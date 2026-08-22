@@ -260,6 +260,16 @@ static void check_serial_cmd() {
             else if (strcmp(cmd_buf, "usage") == 0)  ui_show_screen(SCREEN_USAGE);
             else if (strcmp(cmd_buf, "splash") == 0) ui_show_screen(SCREEN_SPLASH);
             else if (strcmp(cmd_buf, "mode") == 0) cycle_provider();
+            else if (strcmp(cmd_buf, "pet") == 0) {
+                splash_pet_next();
+                ui_flash_hint(splash_pet_name(), 1600);
+            }
+            else if (strcmp(cmd_buf, "hold") == 0) {
+                const bool paused = !splash_paused();
+                splash_set_paused(paused);
+                ui_flash_hint(paused ? "Pets held" : "Pets live", 1600);
+                Serial.printf("pets: %s\n", paused ? "held" : "live");
+            }
             else if (strcmp(cmd_buf, "auto") == 0) {
                 theme_cycle_autoflip();
                 autoflip_last_ms = millis();
@@ -404,16 +414,49 @@ void loop() {
     // press. Activity bookkeeping happens inside idle_consume_wake_press
     // so no separate idle_note_activity() call is needed here.
     {
-        static bool primary_was = false;
-        static bool primary_wake_swallowed = false;
-        bool primary_now = input_hal_is_held(INPUT_BTN_PRIMARY);
-        if (primary_now != primary_was) {
-            if (primary_now) {
+        // PRIMARY, like SECONDARY, now splits by hold length:
+        //   tap  -> next pet (Codex only; the Claude side has one mascot)
+        //   hold -> freeze/unfreeze every mascot, with a hint
+        //
+        // This retires the HID Space that was voice-mode push-to-talk. Both
+        // HID bindings are now gone -- there is no third button on any
+        // supported board, and the buttons are worth more driving the screen
+        // in front of you than sending shortcuts to a terminal.
+        {
+            static bool     primary_was = false;
+            static bool     primary_wake_swallowed = false;
+            static uint32_t primary_down_ms = 0;
+            static bool     primary_consumed = false;
+            static bool     primary_raw_was = false;
+            static uint32_t primary_edge_ms = 0;
+            static bool     primary_now = false;
+            const bool praw = input_hal_is_held(INPUT_BTN_PRIMARY);
+            if (praw != primary_raw_was) {
+                primary_raw_was = praw;
+                primary_edge_ms = millis();
+            } else if (praw != primary_now &&
+                       millis() - primary_edge_ms >= SECONDARY_DEBOUNCE_MS) {
+                primary_now = praw;
+            }
+
+            if (primary_now && !primary_was) {
+                primary_down_ms = millis();
+                primary_consumed = false;
                 if (idle_consume_wake_press()) primary_wake_swallowed = true;
-                else                            ble_keyboard_press(0x2C, 0);  // HID Space, no mods
-            } else {
-                if (primary_wake_swallowed) primary_wake_swallowed = false;
-                else                        ble_keyboard_release();
+            } else if (primary_now && !primary_consumed &&
+                       !primary_wake_swallowed &&
+                       millis() - primary_down_ms >= MODE_HOLD_MS) {
+                const bool paused = !splash_paused();
+                splash_set_paused(paused);
+                ui_flash_hint(paused ? "Pets held" : "Pets live", 1600);
+                primary_consumed = true;
+                Serial.printf("pets: %s\n", paused ? "held" : "live");
+            } else if (!primary_now && primary_was) {
+                if (primary_wake_swallowed)   primary_wake_swallowed = false;
+                else if (!primary_consumed && theme_mode() == THEME_MODE_CODEX) {
+                    splash_pet_next();
+                    ui_flash_hint(splash_pet_name(), 1600);
+                }
             }
             primary_was = primary_now;
         }

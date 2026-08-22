@@ -2,8 +2,10 @@
 #include "splash_animations.h"
 #include "pet_animations.h"
 #include "theme.h"
+#include <Preferences.h>
 #include "splash_geometry.h"
 #include "theme.h"
+#include <Preferences.h>
 #include "usage_rate.h"
 #include "hal/board_caps.h"
 #include "hal/display_hal.h"
@@ -123,13 +125,80 @@ struct ArtSet {
     uint8_t peek_hang_pct;         // how much of it hangs off the edge (see below)
 };
 
-static const ArtSet ART_SETS[THEME_MODE_COUNT] = {
-    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking", 0 },
-    { pet_anims,    PET_ANIM_COUNT,    PET_STAGE_W, PET_STAGE_H, CODEY_GROUPS, CODEY_ACTS, WALK_EVEN,  nullptr, 0 },
-};
+static const ArtSet CLAWD_SET =
+    { splash_anims, SPLASH_ANIM_COUNT, 55, 37, CLAWD_GROUPS, CLAWD_ACTS, WALK_FRONT, "lurking", 0 };
+
+// The Codex side has a pet per sheet in the pack, all sharing one behaviour
+// profile -- the groups, acts, gait and lack of a drawn peek pose are
+// properties of "a ChatGPT pet", not of any one of them. Only the table, the
+// stage and the name differ, so the set is assembled at runtime from PETS[]
+// rather than duplicated eight times.
+static uint8_t pet_idx = 0;
+static bool    pets_paused = false;
+static ArtSet  pet_set;
+
+// Shares the "clawdmeter" namespace with brightness and theme -- the handful
+// of user-chosen settings that should outlive a reboot.
+#define PET_PREF_NS  "clawdmeter"
+#define PET_PREF_KEY "pet"
+#define PAUSE_PREF_KEY "petpause"
+
+static void build_pet_set(void) {
+    const pet_set_t &p = PETS[pet_idx];
+    pet_set.anims = p.anims;
+    pet_set.count = p.count;
+    pet_set.stage_w = p.stage_w;
+    pet_set.stage_h = p.stage_h;
+    pet_set.groups = CODEY_GROUPS;
+    pet_set.acts = CODEY_ACTS;
+    pet_set.walk = WALK_EVEN;
+    pet_set.peek = nullptr;
+    pet_set.peek_hang_pct = 0;
+}
+
+static void pet_load(void) {
+    Preferences prefs;
+    prefs.begin(PET_PREF_NS, true);
+    uint8_t saved = prefs.getUChar(PET_PREF_KEY, 0);
+    prefs.end();
+    pet_idx = (saved < PET_COUNT) ? saved : 0;
+    build_pet_set();
+
+    prefs.begin(PET_PREF_NS, true);
+    pets_paused = prefs.getUChar(PAUSE_PREF_KEY, 0) != 0;
+    prefs.end();
+}
+
+bool splash_paused(void) { return pets_paused; }
+
+void splash_set_paused(bool paused) {
+    if (paused == pets_paused) return;
+    pets_paused = paused;
+
+    Preferences prefs;
+    prefs.begin(PET_PREF_NS, false);
+    prefs.putUChar(PAUSE_PREF_KEY, pets_paused ? 1 : 0);
+    prefs.end();
+}
+
+const char* splash_pet_name(void) { return PETS[pet_idx].name; }
 
 // Art follows the theme: one mode switch changes palette and mascot together.
-static inline const ArtSet& art(void) { return ART_SETS[theme_mode()]; }
+static inline const ArtSet& art(void) {
+    return theme_mode() == THEME_MODE_CLAUDE ? CLAWD_SET : pet_set;
+}
+
+// Every art set the mascot buffers must be able to hold, so a size computed
+// once at create time survives any later mode or pet change.
+static void for_each_set(void (*fn)(const ArtSet&)) {
+    fn(CLAWD_SET);
+    ArtSet tmp = pet_set;
+    for (uint8_t i = 0; i < PET_COUNT; i++) {
+        tmp.anims = PETS[i].anims;
+        tmp.count = PETS[i].count;
+        fn(tmp);
+    }
+}
 
 // Scratch stage: the current animation frame composed centered onto the full
 // 60×60 grid (index 0 = background elsewhere). 3.6 KB of static RAM.
@@ -632,6 +701,14 @@ static void mas_show_still(void) {
     mas_mode_started = millis();
     mas_x = mas_slot_x;
     mas_face = +1;
+
+    // Return to base means BOTH widgets back to their resting visibility. The
+    // trip hides the corner sprite while the peek shows and swaps them back on
+    // the way out -- but a mode or pet change lands here directly, so without
+    // this a switch mid-trip strands the previous set's peek on screen. Caught
+    // on hardware: Clawd was still peeking over a Codex screen.
+    if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+    if (mas_img)      lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
     if (mas_anim)
         mas_render(mas_anim, 0, false, &mas_dsc, mas_buf, mas_img,
                    mas_cell, mas_x, mas_feet_y);
@@ -642,17 +719,19 @@ static void mas_show_still(void) {
 // point afterwards -- and the sets are not close in size: Clawd's biggest act
 // bbox is 28x21 cells while Codey's frames reach 29x34, nearly 1.7x the
 // area. Sizing to the active set overflows mas_buf on the first mode switch.
-static void max_frame_cells(int *out_w, int *out_h) {
-    int mw = 0, mh = 0;
-    for (int m = 0; m < THEME_MODE_COUNT; m++) {
-        const ArtSet &set = ART_SETS[m];
-        for (int i = 0; i < set.count; i++) {
-            if (set.anims[i].w > mw) mw = set.anims[i].w;
-            if (set.anims[i].h > mh) mh = set.anims[i].h;
-        }
+static int mfc_w = 0, mfc_h = 0;
+static void mfc_visit(const ArtSet &set) {
+    for (int i = 0; i < set.count; i++) {
+        if (set.anims[i].w > mfc_w) mfc_w = set.anims[i].w;
+        if (set.anims[i].h > mfc_h) mfc_h = set.anims[i].h;
     }
-    *out_w = mw;
-    *out_h = mh;
+}
+
+static void max_frame_cells(int *out_w, int *out_h) {
+    mfc_w = mfc_h = 0;
+    for_each_set(mfc_visit);
+    *out_w = mfc_w;
+    *out_h = mfc_h;
 }
 
 lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y,
@@ -672,17 +751,14 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y,
     if (mas_lurk_cell < 1) mas_lurk_cell = 1;
     // Largest peek pose across every set, for the same reason mas_buf is
     // sized across every set: allocated once, and the mode can change later.
+    // Only Clawd has a drawn peek pose; the pets cross without one.
     size_t lurk_bytes = 0;
-    for (int m = 0; m < THEME_MODE_COUNT; m++) {
-        const ArtSet &set = ART_SETS[m];
-        if (!set.peek) continue;
-        for (int i = 0; i < set.count; i++) {
-            if (strcmp(set.anims[i].name, set.peek) != 0) continue;
-            const int pc = mas_peek_cell(&set.anims[i]);
-            const size_t need = (size_t)(set.anims[i].w * pc) *
-                                (set.anims[i].h * pc) * 3;
-            if (need > lurk_bytes) lurk_bytes = need;
-        }
+    for (int i = 0; i < CLAWD_SET.count; i++) {
+        if (!CLAWD_SET.peek ||
+            strcmp(CLAWD_SET.anims[i].name, CLAWD_SET.peek) != 0) continue;
+        const int pc = mas_peek_cell(&CLAWD_SET.anims[i]);
+        lurk_bytes = (size_t)(CLAWD_SET.anims[i].w * pc) *
+                     (CLAWD_SET.anims[i].h * pc) * 3;
     }
     mas_buf      = (uint8_t*)heap_caps_malloc(mas_bytes,  MALLOC_CAP_SPIRAM);
     mas_lurk_buf = lurk_bytes ? (uint8_t*)heap_caps_malloc(lurk_bytes, MALLOC_CAP_SPIRAM) : NULL;
@@ -713,6 +789,7 @@ void splash_mascot_set_visible(bool v) {
 }
 
 void splash_mascot_tick(void) {
+    if (pets_paused) return;   // frozen: hold the current frame
     if (!mas_img || !mas_visible || !mas_anim) return;
     const uint32_t now = millis();
 
@@ -859,6 +936,7 @@ static void show_placeholder() {
 }
 
 void splash_init(lv_obj_t *parent) {
+    pet_load();      // before anything reads art(): it builds the pet set
     const BoardCaps& c = board_caps();
 
     // Shared full-screen black container — the splash background.
@@ -942,6 +1020,7 @@ void splash_init(lv_obj_t *parent) {
 }
 
 void splash_tick(void) {
+    if (pets_paused) return;   // frozen: hold the current frame
     if (!active || art().count == 0) return;
     const uint32_t now = millis();
 
@@ -1021,6 +1100,19 @@ void splash_tick(void) {
     }
 
     render_frame(compose_stage(a, cur_frame), a->palette);
+}
+
+void splash_pet_next(void) {
+    pet_idx = (pet_idx + 1) % PET_COUNT;
+    build_pet_set();
+
+    Preferences prefs;
+    prefs.begin(PET_PREF_NS, false);
+    prefs.putUChar(PET_PREF_KEY, pet_idx);
+    prefs.end();
+
+    Serial.printf("pet: -> %s\n", PETS[pet_idx].name);
+    splash_reload_art();
 }
 
 void splash_reload_art(void) {
