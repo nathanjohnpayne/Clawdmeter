@@ -272,3 +272,22 @@ def test_account_window_wins_over_a_model_window(monkeypatch):
 
     p = mod.codex_payload()
     assert p["s"] == 30 and "sm" not in p
+
+
+def test_codex_survives_a_dead_claude_token(monkeypatch):
+    """A 401 on Claude says nothing about Codex, and used to hide it anyway.
+
+    The device reads Claude's fields from the top level, so the no-data beat
+    still carries ok:false there; a readable provider rides along under "x".
+    """
+    import daemon.claude_usage_daemon as mod
+    monkeypatch.setattr(mod._CODEX, "collect_blocking",
+                        lambda: _snap(**{WINDOW_7D: __import__(
+                            "daemon.collectors", fromlist=["Window"]).Window(
+                                85.0, resets_in=5722 * 60)}))
+    codex = mod.codex_payload()
+    beat = {"ok": False}
+    if codex:
+        beat["x"] = codex
+    assert beat["ok"] is False          # Claude mode still says "No data"
+    assert beat["x"]["w"] == 85         # Codex mode stays live

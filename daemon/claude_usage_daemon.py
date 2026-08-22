@@ -909,7 +909,20 @@ async def connect_and_run(target, stop_event: asyncio.Event) -> bool:
                     # be a healthy link for a full POLL_INTERVAL.
                     log("No usable token; signalling no-data to device — run "
                         "`claude login` or use the CLI to let Claude Code renew it")
-                    if await session.write_payload({"ok": False}):
+                    # A dead Claude token says nothing about the other
+                    # providers. The device reads Claude's fields from the top
+                    # level, so it still gets ok:false there and shows "No
+                    # data" in Claude mode -- but any provider that IS readable
+                    # rides along and stays live in its own mode.
+                    beat = {"ok": False}
+                    try:
+                        codex = await asyncio.to_thread(codex_payload)
+                    except Exception as exc:
+                        log(f"Codex poll failed: {exc}")
+                        codex = None
+                    if codex:
+                        beat["x"] = codex
+                    if await session.write_payload(beat):
                         last_poll = time.time()
                 else:
                     # Transient poll failure (a live token that didn't answer this

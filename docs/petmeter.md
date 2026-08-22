@@ -90,6 +90,11 @@ The daemon sends **every** provider it can read in one payload rather than the
 device requesting one. The device holds a slot per provider and picks by mode,
 so switching is instant instead of waiting for the next poll.
 
+**A dead provider does not hide a live one.** The no-data beat (`{"ok": false}`,
+sent when no Claude token authenticates) carries `x` too. The device reads
+Claude's fields from the top level, so Claude mode still shows "No data" while
+Codex mode stays live — an expired Claude token says nothing about Codex.
+
 **Where the merge goes.** It belongs in `poll_active()`, not
 `poll_active_payload()`. The latter reads like the entry point and is not one
 — `run()` calls `poll_active()` directly because it needs the all-dead flag.
@@ -351,8 +356,5 @@ Re-run it after regenerating any font that renders a changing number.
 - **Licensing.** Upstream is deliberately unlicensed because it bundles
   proprietary fonts and mascot art; this fork adds a second vendor to that
   rather than resolving it. See the root README's warning.
-- **Codex without Claude.** Codex only rides along when Claude also produced a
-  payload, since the device's top-level fields are Claude's. A dead Claude
-  token currently hides working Codex data.
 - **The bash daemon** (Linux) has no Codex support. Both Python daemons do.
 - **One-button boards** cannot reach the provider toggle by button.
