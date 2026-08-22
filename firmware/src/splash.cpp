@@ -616,6 +616,13 @@ static const splash_anim_def_t* anim_by_name(const char *n) {
 static void mas_render(const splash_anim_def_t *a, uint16_t frame, bool mirror,
                        lv_image_dsc_t *dsc, uint8_t *buf, lv_obj_t *img,
                        int cell, int x, int feet_y) {
+    // Invalidate where the sprite IS before moving or resizing it. The call at
+    // the end only marks the new area dirty, so under partial rendering the
+    // vacated pixels are never repainted and the mascot leaves a trail behind
+    // it -- visible on the panel, invisible in the simulator, which redraws
+    // the whole frame every time.
+    lv_obj_invalidate(img);
+
     const int w = a->w * cell, h = a->h * cell;
     uint16_t *color = (uint16_t*)buf;
     uint8_t  *alpha = buf + (size_t)w * h * 2;

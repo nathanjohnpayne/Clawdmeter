@@ -340,10 +340,15 @@ check used to be a request to the person holding the device.
 The simulator has no serial console, so there the old workaround still
 applies: temporarily change the default boot screen, iterate, revert.
 
-**Things the simulator cannot catch**, learned the hard way: a payload fed by
-hand hides a daemon that never sends it, and a glyph missing from a subset
-font renders as tofu only on the panel. Both were found by reading the live
-daemon log and pulling a screenshot off real hardware.
+**Things the simulator cannot catch**, learned the hard way:
+
+- A payload fed by hand hides a daemon that never sends it.
+- A glyph missing from a subset font renders as tofu only on the panel.
+- **Stale pixels.** The boards render in PARTIAL mode, so anything not
+  explicitly invalidated is simply never repainted. The simulator redraws the
+  whole frame every time and shows nothing. A moving sprite must invalidate
+  where it *is* before it moves, not only where it lands — otherwise it drags
+  a trail of its own leftovers across the screen.
 
 ---
 
