@@ -246,10 +246,17 @@ path needs `pngjs`, which is not vendored, plus a `sips` pre-step.
    and colors must shift up one. Emitting from index 0 rendered every frame
    one color off, with the most common color becoming the background — a blue
    screen with a navy character.
-2. **Quantize before counting.** Counting the palette in RGB888 is the
-   obvious move and wrong here: soft shading means the top 15 source colors
-   collapse onto **3** distinct RGB565 values, wasting twelve slots and
-   flattening the shading.
+2. **Do not pick the palette by frequency.** Two failures, one after the
+   other. Counting in RGB888 collapses the top 15 onto 3 distinct RGB565
+   values, wasting twelve slots. Counting the 565-rounded values fixes that
+   but still ranks by how *often* a color appears, which loses colors that are
+   rare and essential: BSOD is mostly white body and blue screen in many
+   near-identical shades, so its top 15 were seven off-whites, five blues and
+   the cheek red, with **no dark entry at all**. Its dark outline then matched
+   to the red — red has two low channels and beats light grey on distance — so
+   every outline came out scarlet. Median cut over the 565-rounded pixels
+   allocates by distribution rather than count, so a small far-away cluster
+   like an outline keeps its slot.
 3. **`loop_end` is the last valid index**, not `frame_count`. One past the end
    means the gait never wraps — the walk plays once and stops, about 12px of
    travel.

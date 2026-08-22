@@ -106,6 +106,11 @@ def downsample(frame, stage_w, stage_h):
     return out
 
 
+def rgb565_round(rgb):
+    """The color as the panel will actually store it, back in 8-bit channels."""
+    return unpack565(rgb565(*rgb))
+
+
 def unpack565(v):
     """RGB565 back to 8-bit channels, for distance matching in the same space."""
     r = (v >> 11) & 0x1F
@@ -115,16 +120,29 @@ def unpack565(v):
 
 
 def build_palette(all_cells):
-    """The <=15 most common colors, counted AFTER quantizing to RGB565.
+    """<=15 colors chosen by median cut over the RGB565-rounded pixels.
 
-    Counting in RGB888 first is what you reach for, and it is wrong here: the
-    soft shading means the top 15 source colors are near-duplicates that
-    collapse onto 3 distinct 565 values, so twelve palette slots are spent on
-    colors the panel cannot tell apart and the shading flattens out. Counting
-    in the destination space spends every slot on a visibly distinct color.
+    Frequency ranking is the obvious approach and fails on high-contrast art.
+    BSOD is mostly white body and blue screen in many near-identical shades,
+    so the top 15 by count were seven off-whites within a few units of each
+    other, five blues likewise, and the cheek red -- with NO dark entry at
+    all. Its dark outline then matched to the red, because red has two low
+    channels and beats light grey on distance. Every outline came out scarlet.
+
+    Median cut allocates by how the colors are distributed rather than how
+    often they occur, so a small but far-away cluster like an outline keeps a
+    slot. Quantizing on the 565-rounded values means near-duplicates the panel
+    cannot show anyway collapse before slots are handed out.
     """
-    counts = Counter(rgb565(*rgb) for rgb, drawn in all_cells if drawn)
-    return [unpack565(v) for v, _ in counts.most_common(PALETTE_SIZE - 1)]
+    px = [rgb565_round(rgb) for rgb, drawn in all_cells if drawn]
+    if not px:
+        return []
+    strip = Image.new("RGB", (len(px), 1))
+    strip.putdata(px)
+    q = strip.quantize(colors=PALETTE_SIZE - 1, method=Image.MEDIANCUT)
+    pal = q.getpalette()
+    used = len(set(q.getdata()))
+    return [tuple(pal[i * 3:i * 3 + 3]) for i in range(used)]
 
 
 def nearest(rgb, palette):
