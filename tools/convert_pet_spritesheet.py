@@ -141,8 +141,39 @@ def build_palette(all_cells):
     strip.putdata(px)
     q = strip.quantize(colors=PALETTE_SIZE - 1, method=Image.MEDIANCUT)
     pal = q.getpalette()
-    used = len(set(q.getdata()))
+    used = len(set(q.getdata() if not hasattr(q, 'get_flattened_data')
+                   else q.get_flattened_data()))
     return [tuple(pal[i * 3:i * 3 + 3]) for i in range(used)]
+
+
+def luminance(rgb):
+    r, g, b = rgb
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def lift_palette(palette, min_peak):
+    """Brighten a palette whose brightest color is too dark to see on black.
+
+    These sprites are drawn for the pets page, on white. On a true-black AMOLED
+    the premise inverts: Null Signal's ENTIRE palette peaks at luminance 48 of
+    255 and Stacky's at 101, against a background of 0, so they are all but
+    invisible. Every other pet peaks between 139 and 255 and is left alone.
+
+    One multiplier across all channels, so hue and relative shading survive and
+    the pet stays the darkest of the set -- just no longer a silhouette against
+    its own background.
+
+    This DELIBERATELY departs from the source artwork. Null Signal is drawn to
+    be a barely-there shadow and that reads correctly on a white page; it is a
+    display adaptation, not a correction, so do not "fix" it back.
+    """
+    if not min_peak or not palette:
+        return palette, 1.0
+    peak = max(luminance(c) for c in palette)
+    if peak <= 0 or peak >= min_peak:
+        return palette, 1.0
+    k = min_peak / peak
+    return [tuple(min(255, int(round(ch * k))) for ch in c) for c in palette], k
 
 
 def nearest(rgb, palette):
@@ -182,6 +213,9 @@ def main():
     ap.add_argument("--out", default="firmware/src/pet_animations.h")
     ap.add_argument("--stage-h", type=int, default=40,
                     help="stage height in cells; width follows the art aspect")
+    ap.add_argument("--min-peak", type=int, default=150,
+                    help="lift a palette until its brightest entry reaches this "
+                         "luminance (0 disables); see lift_palette()")
     ap.add_argument("--verify", help="also write a PNG per animation for eyeballing")
     args = ap.parse_args()
 
@@ -229,6 +263,7 @@ def main():
             raw.append((name, category, frames))
 
         palette = build_palette([c for _, _, fs in raw for f in fs for c in f])
+        palette, lift = lift_palette(palette, args.min_peak)
 
         defs = []
         for name, category, frames in raw:
@@ -276,8 +311,9 @@ def main():
         label = pet.replace("_", " ").title()
         pets.append((pet, label, stage_w, stage_h, len(defs)))
         total = sum(len(d["frames"]) for d in defs)
+        note = f", lifted x{lift:.2f}" if lift != 1.0 else ""
         print(f"  {pet:12} {len(defs)} animations, {total} frames, "
-              f"stage {stage_w}x{stage_h}, {len(palette)} colors")
+              f"stage {stage_w}x{stage_h}, {len(palette)} colors{note}")
 
     out.append(f"#define PET_COUNT {len(pets)}")
     out.append("static const pet_set_t PETS[PET_COUNT] = {")

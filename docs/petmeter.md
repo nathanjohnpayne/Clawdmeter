@@ -287,6 +287,20 @@ information and the converter downsamples anyway.
 
 Cost on the 2.16: flash 65.9% → 74.7% for seven extra pets.
 
+**Dark pets get a luminance lift** (`--min-peak`, default 150). The sprites are
+drawn for the pets page, on white. On a true-black AMOLED the premise inverts:
+Null Signal's *entire* palette peaks at luminance 48 of 255 and Stacky's at
+101, against a background of 0, so both are all but invisible. The six others
+peak between 139 and 255 and are untouched.
+
+The lift is one multiplier across all channels, so hue and relative shading
+survive and the pet stays the darkest of the set. Null Signal takes ×3.09,
+Stacky ×1.46.
+
+This **deliberately departs from the source artwork** — Null Signal is drawn to
+be a barely-there shadow, which reads correctly on a white page. It is a
+display adaptation, not a correction. Do not "fix" it back.
+
 Swapping a sheet for a commissioned one at the same dimensions is a drop-in
 change; the converter reads the grid, not the character. See
 [`research/codex-pets/CLAUDE.md`](../research/codex-pets/CLAUDE.md) for
