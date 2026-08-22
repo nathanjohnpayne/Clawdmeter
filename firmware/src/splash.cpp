@@ -714,8 +714,13 @@ static void mas_show_still(void) {
     // the way out -- but a mode or pet change lands here directly, so without
     // this a switch mid-trip strands the previous set's peek on screen. Caught
     // on hardware: Clawd was still peeking over a Codex screen.
+    // ...but only back to the visibility the SCREEN wants. mas_visible is
+    // false while the splash is up, and un-hiding unconditionally here put a
+    // stray corner mascot on the splash canvas: this runs on every act
+    // completion, mode change and pet change, so it overrode
+    // splash_mascot_set_visible(false) within seconds of switching screens.
     if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
-    if (mas_img)      lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+    if (mas_img && mas_visible) lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
     if (mas_anim)
         mas_render(mas_anim, 0, false, &mas_dsc, mas_buf, mas_img,
                    mas_cell, mas_x, mas_feet_y);
