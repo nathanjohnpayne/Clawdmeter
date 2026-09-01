@@ -26,6 +26,15 @@ switch is instant rather than waiting for the next poll.
 | **Claude** | Claude Code's OAuth token → `anthropic-ratelimit-unified-*` response headers | Warm palette, serif title, Clawd. The Weekly card flips between all-models and any scoped-model allowance (e.g. Fable). |
 | **Codex** | Codex CLI's OAuth token → `chatgpt.com/backend-api/wham/usage`, with the session rollout logs as an offline fallback | Neutral palette, sans throughout, and any of the eight ChatGPT pets. Shows the model's weekly quota above the account's. |
 
+|                    Claude                     |                   Codex                    |
+| :-------------------------------------------: | :----------------------------------------: |
+| ![Claude](screenshots/petmeter-claude.png)     | ![Codex](screenshots/petmeter-codex.png)   |
+| Serif display face, warm palette, Clawd. The Weekly card flips between all-models and any scoped-model allowance. | Sans throughout, neutral palette, your chosen pet. Model weekly above account weekly. |
+
+Tap the left button to change pet — eight ship with the firmware:
+
+![Pets](screenshots/petmeter-pets.png)
+
 Adding a provider means writing one collector against the interface in
 [`daemon/collectors/`](daemon/collectors/__init__.py) — a normalized
 `UsageSnapshot` the daemon consumes without knowing which vendor produced it.
